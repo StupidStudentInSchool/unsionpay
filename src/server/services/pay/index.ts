@@ -185,8 +185,8 @@ export class PayService {
       status: order.status,
       total_amount: order.total_amount,
       actual_amount: order.actual_amount,
-      paid_time: order.paid_time?.toISOString(),
-      expire_time: order.expire_time?.toISOString(),
+      paid_time: order.paid_time ? (order.paid_time instanceof Date ? order.paid_time.toISOString() : order.paid_time) : undefined,
+      expire_time: order.expire_time ? (order.expire_time instanceof Date ? order.expire_time.toISOString() : order.expire_time) : undefined,
       refund_status: refundStatus as RefundStatus,
       refund_amount: refundAmount,
     };

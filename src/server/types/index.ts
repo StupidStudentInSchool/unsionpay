@@ -46,6 +46,7 @@ export interface MerchantConfig {
   alipay_app_id?: string;
   alipay_private_key?: string;
   alipay_public_key?: string;
+  alipay_alipay_public_key?: string; // 支付宝返回的公钥，用于验签
   alipay_notify_url?: string;
   
   // 微信配置
@@ -106,8 +107,8 @@ export interface PayOrder {
   pay_params?: string;
   pay_url?: string;
   qr_code?: string;
-  expire_time?: Date;
-  paid_time?: Date;
+  expire_time?: Date | string | null;
+  paid_time?: Date | string | null;
   status: OrderStatus;
   attach?: string;
   client_ip?: string;
