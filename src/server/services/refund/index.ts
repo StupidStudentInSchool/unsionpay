@@ -3,14 +3,22 @@
 // =====================================================
 
 import db from '../../db';
-import { RowDataPacket } from 'mysql2/promise';
+import { RefundRow } from '../../db';
 import { RefundOrder, UnifiedRefundRequest, UnifiedRefundResponse, RefundStatus } from '../../types';
 import { PayService } from '../pay';
 import { MerchantService } from '../merchant';
 import { PayException, PayErrorCode } from '../../types';
 import { generateRefundNo, yuanToFen } from '../../utils';
 
-interface RefundRow extends RowDataPacket, RefundOrder {}
+// SQLite 日期格式化辅助函数
+function formatDateField(date: unknown): string {
+  if (!date) return '';
+  if (typeof date === 'string') return date.split('T')[0];
+  if (typeof date === 'object' && 'toISOString' in date) {
+    return (date as Date).toISOString().split('T')[0];
+  }
+  return String(date);
+}
 
 /**
  * 退款服务
@@ -182,7 +190,7 @@ export class RefundService {
     const placeholders = fields.map(() => '?').join(', ');
     const sql = `INSERT INTO refund_order (${fields.join(', ')}) VALUES (${placeholders})`;
     const result = await db.execute(sql, values);
-    return result.insertId;
+    return result.lastInsertRowid;
   }
 
   /**
@@ -207,7 +215,7 @@ export class RefundService {
     values.push(refundNo);
     const sql = `UPDATE refund_order SET ${updates.join(', ')}, updated_at = NOW() WHERE refund_no = ?`;
     const result = await db.execute(sql, values);
-    return result.affectedRows > 0;
+    return result.changes > 0;
   }
 
   /**
@@ -222,7 +230,7 @@ export class RefundService {
       JOIN pay_order p ON r.order_id = p.id
       WHERE p.app_id = ? AND r.merchant_refund_no = ?
     `;
-    const rows = await db.query<RefundRow[]>(sql, [appId, merchantRefundNo]);
+    const rows = await db.query<RefundRow>(sql, [appId, merchantRefundNo]);
     return rows[0] || null;
   }
 
@@ -235,8 +243,8 @@ export class RefundService {
       FROM refund_order
       WHERE order_id = ? AND status IN ('success', 'processing')
     `;
-    const rows = await db.query<RowDataPacket[]>(sql, [orderId]);
-    return (rows[0] as { total: number }).total || 0;
+    const rows = await db.query<{ total: number }>(sql, [orderId]);
+    return rows[0]?.total || 0;
   }
 
   /**
@@ -277,13 +285,13 @@ export class RefundService {
     params.push(pageSize, offset);
 
     const [list, countResult] = await Promise.all([
-      db.query<RefundRow[]>(sql, params),
-      db.query<RowDataPacket[]>(countSql, appId || status ? params.slice(0, -2) : [])
+      db.query<RefundRow>(sql, params),
+      db.query<{ total: number }>(countSql, appId || status ? params.slice(0, -2) : [])
     ]);
 
     return {
       list,
-      total: (countResult[0] as { total: number }).total
+      total: countResult[0]?.total || 0
     };
   }
 }
@@ -349,13 +357,13 @@ export async function getRefundList(params: RefundListParams): Promise<RefundLis
 
   // Count
   const countParams = appId || status ? paramsArr : [];
-  const countResult = await db.query<RowDataPacket[]>(countSql, countParams);
-  const total = (countResult[0] as { total: number }).total;
+  const countResult = await db.query<{ total: number }>(countSql, countParams);
+  const total = countResult[0]?.total || 0;
 
   // List
   sql += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
   const listParams = [...paramsArr, pageSize, (page - 1) * pageSize];
-  const list = await db.query<RowDataPacket[]>(sql, listParams);
+  const list = await db.query<RefundRow>(sql, listParams);
 
   return {
     list: list.map((item) => ({
@@ -367,8 +375,8 @@ export async function getRefundList(params: RefundListParams): Promise<RefundLis
       refund_amount: item.refund_amount,
       status: item.status,
       reason: item.reason,
-      created_at: item.created_at?.toISOString().split('T')[0] || '',
-      refund_time: item.refund_time?.toISOString().split('T')[0],
+      created_at: formatDateField(item.created_at),
+      refund_time: formatDateField(item.refund_time),
     })),
     total,
   };

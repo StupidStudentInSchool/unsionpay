@@ -3,7 +3,7 @@
 // =====================================================
 
 import db from '../../db';
-import { RowDataPacket } from 'mysql2/promise';
+import { OrderRow } from '../../db';
 import { PayOrder, UnifiedPayRequest, UnifiedPayResponse, PayQueryResponse, OrderStatus, RefundStatus } from '../../types';
 import { MerchantService } from '../merchant';
 import { SignService } from '../sign';
@@ -13,8 +13,6 @@ import { PayAdapter, PayParams } from '../../types';
 import { PayException, PayErrorCode } from '../../types';
 import { generateOrderNo, calculateExpireTime, yuanToFen } from '../../utils';
 import config from '../../config';
-
-interface OrderRow extends RowDataPacket, PayOrder {}
 
 /**
  * 支付服务
@@ -114,7 +112,7 @@ export class PayService {
         app_params: payParams.app_params,
         h5_params: payParams.h5_params,
       }),
-      expire_time: expireTime,
+      expire_time: expireTime instanceof Date ? expireTime.toISOString() : expireTime,
       status: 'pending',
       attach,
       client_ip,
@@ -235,13 +233,17 @@ export class PayService {
       if (field === 'extra') {
         return value ? JSON.stringify(value) : null;
       }
-      return value ?? null;
+      // SQLite 不支持 undefined，需要转换为 null
+      if (value === undefined) {
+        return null;
+      }
+      return value;
     });
 
     const placeholders = fields.map(() => '?').join(', ');
     const sql = `INSERT INTO pay_order (${fields.join(', ')}) VALUES (${placeholders})`;
     const result = await db.execute(sql, values);
-    return result.insertId;
+    return result.lastInsertRowid;
   }
 
   /**
@@ -249,7 +251,7 @@ export class PayService {
    */
   static async getByOrderNo(orderNo: string): Promise<PayOrder | null> {
     const sql = 'SELECT * FROM pay_order WHERE order_no = ?';
-    const rows = await db.query<OrderRow[]>(sql, [orderNo]);
+    const rows = await db.query<OrderRow>(sql, [orderNo]);
     return rows[0] || null;
   }
 
@@ -258,7 +260,7 @@ export class PayService {
    */
   static async getByMerchantOrderNo(appId: string, merchantOrderNo: string): Promise<PayOrder | null> {
     const sql = 'SELECT * FROM pay_order WHERE app_id = ? AND merchant_order_no = ?';
-    const rows = await db.query<OrderRow[]>(sql, [appId, merchantOrderNo]);
+    const rows = await db.query<OrderRow>(sql, [appId, merchantOrderNo]);
     return rows[0] || null;
   }
 
@@ -267,7 +269,7 @@ export class PayService {
    */
   static async getByChannelOrderNo(channel: string, channelOrderNo: string): Promise<PayOrder | null> {
     const sql = 'SELECT * FROM pay_order WHERE channel = ? AND channel_order_no = ?';
-    const rows = await db.query<OrderRow[]>(sql, [channel, channelOrderNo]);
+    const rows = await db.query<OrderRow>(sql, [channel, channelOrderNo]);
     return rows[0] || null;
   }
 
@@ -277,7 +279,7 @@ export class PayService {
   static async updateOrderStatus(orderNo: string, status: OrderStatus): Promise<boolean> {
     const sql = 'UPDATE pay_order SET status = ?, updated_at = NOW() WHERE order_no = ?';
     const result = await db.execute(sql, [status, orderNo]);
-    return result.affectedRows > 0;
+    return result.changes > 0;
   }
 
   /**
@@ -286,7 +288,7 @@ export class PayService {
   static async updateChannelOrderNo(orderNo: string, channelOrderNo: string): Promise<boolean> {
     const sql = 'UPDATE pay_order SET channel_order_no = ?, updated_at = NOW() WHERE order_no = ?';
     const result = await db.execute(sql, [channelOrderNo, orderNo]);
-    return result.affectedRows > 0;
+    return result.changes > 0;
   }
 
   /**
@@ -302,7 +304,7 @@ export class PayService {
       WHERE order_no = ?
     `;
     const result = await db.execute(sql, [channelOrderNo, paidTime, orderNo]);
-    return result.affectedRows > 0;
+    return result.changes > 0;
   }
 
   /**
@@ -315,8 +317,8 @@ export class PayService {
       WHERE order_id = ? AND status = 'success'
       GROUP BY status
     `;
-    const rows = await db.query<RowDataPacket[]>(sql, [orderId]);
-    return rows[0] as { status: string; refund_amount: number } | null;
+    const rows = await db.query<{ status: string; refund_amount: number }>(sql, [orderId]);
+    return rows[0] || null;
   }
 
   /**
@@ -349,13 +351,13 @@ export class PayService {
     params.push(pageSize, offset);
 
     const [list, countResult] = await Promise.all([
-      db.query<OrderRow[]>(sql, params),
-      db.query<RowDataPacket[]>(countSql, appId || status ? params.slice(0, -2) : [])
+      db.query<OrderRow>(sql, params),
+      db.query<OrderRow>(countSql, appId || status ? params.slice(0, -2) : [])
     ]);
 
     return {
       list,
-      total: (countResult[0] as { total: number }).total
+      total: (countResult[0] (countResult[0] as unknown) as { total: number }).total
     };
   }
 }
@@ -424,26 +426,38 @@ export async function getOrderList(params: OrderListParams): Promise<OrderListRe
 
   // Count
   const countParams = appId || status || channel ? paramsArr : [];
-  const countResult = await db.query<RowDataPacket[]>(countSql, countParams);
-  const total = (countResult[0] as { total: number }).total;
+  const countResult = await db.query<{ total: number }>(countSql, countParams);
+  const total = countResult[0]?.total || 0;
 
   // List
   sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
   const listParams = [...paramsArr, pageSize, (page - 1) * pageSize];
-  const list = await db.query<OrderRow[]>(sql, listParams);
+  const list = await db.query<OrderRow>(sql, listParams);
 
   return {
-    list: list.map((item) => ({
-      order_no: item.order_no,
-      merchant_order_no: item.merchant_order_no,
-      app_id: item.app_id,
-      channel: item.channel,
-      trade_type: item.trade_type,
-      total_amount: item.total_amount,
-      status: item.status,
-      paid_time: item.paid_time?.toISOString(),
-      created_at: item.created_at?.toISOString().split('T')[0] || '',
-    })),
+    list: list.map((item) => {
+      // SQLite 返回的日期可能是字符串或 Date 对象
+      const formatDate = (date: unknown): string => {
+        if (!date) return '';
+        if (typeof date === 'string') return date.split('T')[0];
+        if (typeof date === 'object' && 'toISOString' in date) {
+          return (date as Date).toISOString().split('T')[0];
+        }
+        return String(date);
+      };
+
+      return {
+        order_no: item.order_no,
+        merchant_order_no: item.merchant_order_no,
+        app_id: item.app_id,
+        channel: item.channel,
+        trade_type: item.trade_type,
+        total_amount: item.total_amount,
+        status: item.status,
+        paid_time: formatDate(item.paid_time),
+        created_at: formatDate(item.created_at),
+      };
+    }),
     total,
   };
 }
@@ -457,12 +471,8 @@ export async function getOrderSummary(): Promise<OrderSummaryResult> {
       SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END) as totalAmount
     FROM pay_order
   `;
-  const orderResult = await db.query<RowDataPacket[]>(orderSql);
-  const orderStats = orderResult[0] as {
-    totalOrders: number;
-    paidOrders: number;
-    totalAmount: number;
-  };
+  const orderResult = await db.query<{ totalOrders: number; paidOrders: number; totalAmount: number }>(orderSql);
+  const orderStats = orderResult[0] || { totalOrders: 0, paidOrders: 0, totalAmount: 0 };
 
   // 获取退款统计
   const refundSql = `
@@ -470,8 +480,8 @@ export async function getOrderSummary(): Promise<OrderSummaryResult> {
     FROM refund_order
     WHERE status = 'success'
   `;
-  const refundResult = await db.query<RowDataPacket[]>(refundSql);
-  const refundAmount = (refundResult[0] as { refundAmount: number }).refundAmount;
+  const refundResult = await db.query<{ refundAmount: number }>(refundSql);
+  const refundAmount = refundResult[0]?.refundAmount || 0;
 
   return {
     totalOrders: orderStats.totalOrders || 0,

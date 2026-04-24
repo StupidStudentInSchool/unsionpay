@@ -3,15 +3,12 @@
 // =====================================================
 
 import db from '../../db';
-import { RowDataPacket } from 'mysql2/promise';
+import { NotifyLogRow, NotifyTargetRow } from '../../db';
 import { NotifyLog, NotifyTarget, PayChannel } from '../../types';
 import { PayService } from '../pay';
 import { PayException, PayErrorCode } from '../../types';
 import { generateLogId, delay } from '../../utils';
 import config from '../../config';
-
-interface NotifyLogRow extends RowDataPacket, NotifyLog {}
-interface NotifyTargetRow extends RowDataPacket, NotifyTarget {}
 
 /**
  * 回调通知服务
@@ -245,7 +242,7 @@ export const NotifyService = {
       SELECT * FROM notify_target
       WHERE app_id = ? AND notify_type = ? AND status = 'active'
     `;
-    const rows = await db.query<NotifyTargetRow[]>(sql, [appId, notifyType]);
+    const rows = await db.query<NotifyTargetRow>(sql, [appId, notifyType]);
     return rows;
   },
 
@@ -339,13 +336,13 @@ export const NotifyService = {
     params.push(pageSize, offset);
 
     const [list, countResult] = await Promise.all([
-      db.query<NotifyLogRow[]>(sql, params),
-      db.query<RowDataPacket[]>(countSql, appId || status ? params.slice(0, -2) : [])
+      db.query<NotifyLogRow>(sql, params),
+      db.query<NotifyLogRow>(countSql, appId || status ? params.slice(0, -2) : [])
     ]);
 
     return {
       list,
-      total: (countResult[0] as { total: number }).total
+      total: (countResult[0] (countResult[0] as unknown) as { total: number }).total
     };
   },
 };

@@ -2,13 +2,9 @@
 // 统一支付系统 - 商户服务
 // =====================================================
 
-import { RowDataPacket } from 'mysql2/promise';
 import db from '../../db';
+import { MerchantRow, ReceiverRow } from '../../db';
 import { MerchantConfig, ProfitSharingReceiver, MerchantStatus } from '../../types';
-
-interface MerchantRow extends RowDataPacket, MerchantConfig {}
-
-interface ReceiverRow extends RowDataPacket, ProfitSharingReceiver {}
 
 /**
  * 商户服务
@@ -22,7 +18,7 @@ export class MerchantService {
       SELECT * FROM merchant_config 
       WHERE app_id = ? AND status = 'active'
     `;
-    const rows = await db.query<MerchantRow[]>(sql, [appId]);
+    const rows = await db.query<MerchantRow>(sql, [appId]);
     return rows[0] || null;
   }
 
@@ -31,7 +27,7 @@ export class MerchantService {
    */
   static async getById(id: number): Promise<MerchantConfig | null> {
     const sql = `SELECT * FROM merchant_config WHERE id = ?`;
-    const rows = await db.query<MerchantRow[]>(sql, [id]);
+    const rows = await db.query<MerchantRow>(sql, [id]);
     return rows[0] || null;
   }
 
@@ -43,7 +39,7 @@ export class MerchantService {
       SELECT * FROM profit_sharing_receiver 
       WHERE merchant_id = ? AND status = 'active'
     `;
-    const rows = await db.query<ReceiverRow[]>(sql, [merchantId]);
+    const rows = await db.query<ReceiverRow>(sql, [merchantId]);
     return rows;
   }
 
@@ -60,12 +56,19 @@ export class MerchantService {
       'default_channel', 'status', 'rate_limit', 'ip_whitelist', 'remark'
     ];
 
-    const values = fields.map(field => data[field as keyof MerchantConfig]);
+    // SQLite 不支持布尔值，需要转换为整数
+    const values = fields.map(field => {
+      const value = data[field as keyof MerchantConfig];
+      if (typeof value === 'boolean') {
+        return value ? 1 : 0;
+      }
+      return value;
+    });
     const placeholders = fields.map(() => '?').join(', ');
 
     const sql = `INSERT INTO merchant_config (${fields.join(', ')}) VALUES (${placeholders})`;
     const result = await db.execute(sql, values);
-    return result.insertId;
+    return result.lastInsertRowid;
   }
 
   /**
@@ -87,7 +90,12 @@ export class MerchantService {
     for (const field of fields) {
       if (field in data) {
         updates.push(`${field} = ?`);
-        values.push(data[field as keyof MerchantConfig]);
+        let value = data[field as keyof MerchantConfig];
+        // SQLite 不支持布尔值，需要转换为整数
+        if (typeof value === 'boolean') {
+          value = value ? 1 : 0;
+        }
+        values.push(value);
       }
     }
 
@@ -96,7 +104,7 @@ export class MerchantService {
     values.push(id);
     const sql = `UPDATE merchant_config SET ${updates.join(', ')} WHERE id = ?`;
     const result = await db.execute(sql, values);
-    return result.affectedRows > 0;
+    return result.changes > 0;
   }
 
   /**
@@ -145,7 +153,7 @@ export class MerchantService {
       params.push(...receiverIds);
     }
 
-    const rows = await db.query<ReceiverRow[]>(sql, params);
+    const rows = await db.query<ReceiverRow>(sql, params);
     return rows;
   }
 
@@ -163,7 +171,7 @@ export class MerchantService {
 
     const sql = `INSERT INTO profit_sharing_receiver (${fields.join(', ')}) VALUES (${placeholders})`;
     const result = await db.execute(sql, values);
-    return result.insertId;
+    return result.lastInsertRowid;
   }
 
   /**
@@ -189,13 +197,13 @@ export class MerchantService {
     params.push(pageSize, offset);
 
     const [list, countResult] = await Promise.all([
-      db.query<MerchantRow[]>(sql, params),
-      db.query<RowDataPacket[]>(countSql, status ? [status] : [])
+      db.query<MerchantRow>(sql, params),
+      db.query<{ total: number }>(countSql, status ? [status] : [])
     ]);
 
     return {
       list,
-      total: (countResult[0] as { total: number }).total
+      total: countResult[0]?.total || 0
     };
   }
 
@@ -205,7 +213,7 @@ export class MerchantService {
   static async delete(id: number): Promise<boolean> {
     const sql = `DELETE FROM merchant_config WHERE id = ?`;
     const result = await db.execute(sql, [id]);
-    return result.affectedRows > 0;
+    return result.changes > 0;
   }
 }
 

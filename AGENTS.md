@@ -8,8 +8,22 @@
 
 - **前端**: Next.js 16 (App Router) + React 19 + TypeScript + shadcn/ui
 - **后端**: Next.js API Routes
-- **数据库**: MySQL 8.0+
+- **数据库**: SQLite (开发环境) / MySQL (生产环境)
 - **包管理**: pnpm
+
+## 数据库配置
+
+系统默认使用 SQLite 作为数据库，无需额外配置即可运行。
+
+如需切换到 MySQL，配置环境变量：
+```env
+DB_TYPE=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=unified_pay
+```
 
 ## 目录结构
 

@@ -2,8 +2,8 @@
 // 统一支付系统 - 分账服务
 // =====================================================
 
-import db from '../../db';
-import { RowDataPacket, PoolConnection } from 'mysql2/promise';
+import db, { SharingRow, DetailRow } from '../../db';
+import { PoolConnection } from 'mysql2/promise';
 import {
   ProfitSharingOrder,
   ProfitSharingDetail,
@@ -17,9 +17,6 @@ import { PayService } from '../pay';
 import { MerchantService } from '../merchant';
 import { PayException, PayErrorCode } from '../../types';
 import { generateSharingNo, generateLogId, yuanToFen, delay } from '../../utils';
-
-interface SharingRow extends RowDataPacket, ProfitSharingOrder {}
-interface DetailRow extends RowDataPacket, ProfitSharingDetail {}
 
 /**
  * 分账服务
@@ -366,7 +363,7 @@ export class ProfitSharingService {
     values.push(sharingNo);
     const sql = `UPDATE profit_sharing_order SET ${updates.join(', ')}, updated_at = NOW() WHERE sharing_no = ?`;
     const result = await db.execute(sql, values);
-    return result.affectedRows > 0;
+    return result.changes > 0;
   }
 
   /**
@@ -391,7 +388,7 @@ export class ProfitSharingService {
    */
   private static async getBySharingNo(sharingNo: string): Promise<ProfitSharingOrder | null> {
     const sql = 'SELECT * FROM profit_sharing_order WHERE sharing_no = ?';
-    const rows = await db.query<SharingRow[]>(sql, [sharingNo]);
+    const rows = await db.query<SharingRow>(sql, [sharingNo]);
     return rows[0] || null;
   }
 
@@ -400,7 +397,7 @@ export class ProfitSharingService {
    */
   private static async getByOrderId(orderId: number): Promise<ProfitSharingOrder | null> {
     const sql = 'SELECT * FROM profit_sharing_order WHERE order_id = ?';
-    const rows = await db.query<SharingRow[]>(sql, [orderId]);
+    const rows = await db.query<SharingRow>(sql, [orderId]);
     return rows[0] || null;
   }
 
@@ -409,7 +406,7 @@ export class ProfitSharingService {
    */
   private static async getDetails(sharingId: number): Promise<ProfitSharingDetail[]> {
     const sql = 'SELECT * FROM profit_sharing_detail WHERE sharing_id = ?';
-    const rows = await db.query<DetailRow[]>(sql, [sharingId]);
+    const rows = await db.query<DetailRow>(sql, [sharingId]);
     return rows;
   }
 }
