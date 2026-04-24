@@ -231,7 +231,7 @@ export class RefundService {
       WHERE p.app_id = ? AND r.merchant_refund_no = ?
     `;
     const rows = await db.query<RefundRow>(sql, [appId, merchantRefundNo]);
-    return rows[0] || null;
+    return (rows[0] as unknown as RefundOrder) || null;
   }
 
   /**
@@ -290,7 +290,7 @@ export class RefundService {
     ]);
 
     return {
-      list,
+      list: list as unknown as RefundOrder[],
       total: countResult[0]?.total || 0
     };
   }
@@ -363,7 +363,7 @@ export async function getRefundList(params: RefundListParams): Promise<RefundLis
   // List
   sql += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
   const listParams = [...paramsArr, pageSize, (page - 1) * pageSize];
-  const list = await db.query<RefundRow>(sql, listParams);
+  const list = await db.query<RefundRow & { merchant_order_no: string }>(sql, listParams);
 
   return {
     list: list.map((item) => ({
@@ -374,9 +374,9 @@ export async function getRefundList(params: RefundListParams): Promise<RefundLis
       total_amount: item.total_amount,
       refund_amount: item.refund_amount,
       status: item.status,
-      reason: item.reason,
+      reason: item.reason || undefined,
       created_at: formatDateField(item.created_at),
-      refund_time: formatDateField(item.refund_time),
+      refund_time: item.refund_time ? formatDateField(item.refund_time) : undefined,
     })),
     total,
   };

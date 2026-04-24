@@ -19,7 +19,7 @@ export class MerchantService {
       WHERE app_id = ? AND status = 'active'
     `;
     const rows = await db.query<MerchantRow>(sql, [appId]);
-    return rows[0] || null;
+    return (rows[0] as unknown as MerchantConfig) || null;
   }
 
   /**
@@ -28,7 +28,7 @@ export class MerchantService {
   static async getById(id: number): Promise<MerchantConfig | null> {
     const sql = `SELECT * FROM merchant_config WHERE id = ?`;
     const rows = await db.query<MerchantRow>(sql, [id]);
-    return rows[0] || null;
+    return (rows[0] as unknown as MerchantConfig) || null;
   }
 
   /**
@@ -40,7 +40,7 @@ export class MerchantService {
       WHERE merchant_id = ? AND status = 'active'
     `;
     const rows = await db.query<ReceiverRow>(sql, [merchantId]);
-    return rows;
+    return rows as unknown as ProfitSharingReceiver[];
   }
 
   /**
@@ -154,7 +154,7 @@ export class MerchantService {
     }
 
     const rows = await db.query<ReceiverRow>(sql, params);
-    return rows;
+    return rows as unknown as ProfitSharingReceiver[];
   }
 
   /**
@@ -202,7 +202,7 @@ export class MerchantService {
     ]);
 
     return {
-      list,
+      list: list as unknown as MerchantConfig[],
       total: countResult[0]?.total || 0
     };
   }

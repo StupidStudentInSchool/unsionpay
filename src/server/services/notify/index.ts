@@ -243,7 +243,7 @@ export const NotifyService = {
       WHERE app_id = ? AND notify_type = ? AND status = 'active'
     `;
     const rows = await db.query<NotifyTargetRow>(sql, [appId, notifyType]);
-    return rows;
+    return rows as unknown as NotifyTarget[];
   },
 
   /**
@@ -341,8 +341,8 @@ export const NotifyService = {
     ]);
 
     return {
-      list,
-      total: (countResult[0] (countResult[0] as unknown) as { total: number }).total
+      list: list as unknown as NotifyLog[],
+      total: (countResult[0] as unknown as { total: number }).total || 0
     };
   },
 };

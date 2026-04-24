@@ -98,25 +98,25 @@ export class ProfitSharingService {
     const sharingNo = out_sharing_no || generateSharingNo();
 
     // 11. 使用事务创建分账记录
-    await db.transaction(async (conn: PoolConnection) => {
+    await db.transaction(async () => {
       // 创建分账订单
-      const [orderResult] = await conn.execute(
+      const orderResult = await db.execute(
         `INSERT INTO profit_sharing_order 
          (sharing_no, order_id, order_no, channel, total_amount, status, created_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', NOW())`,
+         VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))`,
         [sharingNo, order.id, order.order_no, channel, totalAmount]
       );
 
-      const sharingId = (orderResult as { insertId: number }).insertId;
+      const sharingId = orderResult.lastInsertRowid as number;
 
       // 创建分账明细
       for (const receiver of validatedReceivers) {
         const detailId = `DT${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
-        await conn.execute(
+        await db.execute(
           `INSERT INTO profit_sharing_detail
            (sharing_id, detail_id, receiver_id, receiver_type, receiver_account, 
             receiver_name, amount, share_ratio, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
           [
             sharingId,
             detailId,
@@ -389,7 +389,7 @@ export class ProfitSharingService {
   private static async getBySharingNo(sharingNo: string): Promise<ProfitSharingOrder | null> {
     const sql = 'SELECT * FROM profit_sharing_order WHERE sharing_no = ?';
     const rows = await db.query<SharingRow>(sql, [sharingNo]);
-    return rows[0] || null;
+    return (rows[0] as unknown as ProfitSharingOrder) || null;
   }
 
   /**
@@ -398,7 +398,7 @@ export class ProfitSharingService {
   private static async getByOrderId(orderId: number): Promise<ProfitSharingOrder | null> {
     const sql = 'SELECT * FROM profit_sharing_order WHERE order_id = ?';
     const rows = await db.query<SharingRow>(sql, [orderId]);
-    return rows[0] || null;
+    return (rows[0] as unknown as ProfitSharingOrder) || null;
   }
 
   /**
@@ -407,7 +407,7 @@ export class ProfitSharingService {
   private static async getDetails(sharingId: number): Promise<ProfitSharingDetail[]> {
     const sql = 'SELECT * FROM profit_sharing_detail WHERE sharing_id = ?';
     const rows = await db.query<DetailRow>(sql, [sharingId]);
-    return rows;
+    return rows as unknown as ProfitSharingDetail[];
   }
 }
 

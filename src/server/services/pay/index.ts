@@ -112,7 +112,7 @@ export class PayService {
         app_params: payParams.app_params,
         h5_params: payParams.h5_params,
       }),
-      expire_time: expireTime instanceof Date ? expireTime.toISOString() : expireTime,
+      expire_time: expireTime instanceof Date ? expireTime : (expireTime ? new Date(expireTime) : undefined),
       status: 'pending',
       attach,
       client_ip,
@@ -252,7 +252,7 @@ export class PayService {
   static async getByOrderNo(orderNo: string): Promise<PayOrder | null> {
     const sql = 'SELECT * FROM pay_order WHERE order_no = ?';
     const rows = await db.query<OrderRow>(sql, [orderNo]);
-    return rows[0] || null;
+    return (rows[0] as unknown as PayOrder) || null;
   }
 
   /**
@@ -261,7 +261,7 @@ export class PayService {
   static async getByMerchantOrderNo(appId: string, merchantOrderNo: string): Promise<PayOrder | null> {
     const sql = 'SELECT * FROM pay_order WHERE app_id = ? AND merchant_order_no = ?';
     const rows = await db.query<OrderRow>(sql, [appId, merchantOrderNo]);
-    return rows[0] || null;
+    return (rows[0] as unknown as PayOrder) || null;
   }
 
   /**
@@ -270,7 +270,7 @@ export class PayService {
   static async getByChannelOrderNo(channel: string, channelOrderNo: string): Promise<PayOrder | null> {
     const sql = 'SELECT * FROM pay_order WHERE channel = ? AND channel_order_no = ?';
     const rows = await db.query<OrderRow>(sql, [channel, channelOrderNo]);
-    return rows[0] || null;
+    return (rows[0] as unknown as PayOrder) || null;
   }
 
   /**
@@ -318,7 +318,7 @@ export class PayService {
       GROUP BY status
     `;
     const rows = await db.query<{ status: string; refund_amount: number }>(sql, [orderId]);
-    return rows[0] || null;
+    return (rows[0] as { status: string; refund_amount: number }) || null;
   }
 
   /**
@@ -356,8 +356,8 @@ export class PayService {
     ]);
 
     return {
-      list,
-      total: (countResult[0] (countResult[0] as unknown) as { total: number }).total
+      list: list as unknown as PayOrder[],
+      total: (countResult[0] as unknown as { total: number }).total || 0
     };
   }
 }
