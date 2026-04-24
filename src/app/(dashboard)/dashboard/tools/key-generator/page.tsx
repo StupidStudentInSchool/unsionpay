@@ -27,11 +27,59 @@ export default function KeyGeneratorPage() {
   const [copied, setCopied] = useState<string | null>(null);
 
   // 生成 PKCS#1 格式公钥（支付宝要求）
+  // PKCS#1 格式 = RSAPublicKey = { modulus (n), publicExponent (e) }
+  // PKCS#8 格式 = SubjectPublicKeyInfo = { algorithm, subjectPublicKey }
   const publicKeyToPkcs1 = (forge: typeof import('node-forge'), publicKey: any): string => {
-    const der = forge.asn1.toDer(forge.pki.publicKeyToAsn1(publicKey)).getBytes();
+    // 从公钥对象提取 n 和 e
+    const publicKeyHex = publicKey.n.toString(16); // modulus
+    const exponent = publicKey.e; // public exponent (通常是 65537)
+    
+    // 将 hex 转换为 bytes
+    const nBytes = hexToBytes(publicKeyHex);
+    const eBytes = intToBytes(exponent);
+    
+    // 构建 PKCS#1 RSAPublicKey ASN.1 结构
+    // RSAPublicKey ::= SEQUENCE { n INTEGER, e INTEGER }
+    const asn1Sequence = forge.asn1.create(
+      forge.asn1.Class.UNIVERSAL,
+      forge.asn1.Type.SEQUENCE,
+      true,
+      [
+        forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.INTEGER, false, nBytes),
+        forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.INTEGER, false, eBytes)
+      ]
+    );
+    
+    const der = forge.asn1.toDer(asn1Sequence).getBytes();
     return '-----BEGIN RSA PUBLIC KEY-----\n' + 
       forge.util.encode64(der) + 
       '\n-----END RSA PUBLIC KEY-----';
+  };
+
+  // 将十六进制字符串转换为字节数组
+  const hexToBytes = (hex: string): string => {
+    let bytes = '';
+    // 确保是偶数长度
+    if (hex.length % 2 !== 0) {
+      hex = '0' + hex;
+    }
+    for (let i = 0; i < hex.length; i += 2) {
+      const charCode = parseInt(hex.substr(i, 2), 16);
+      bytes += String.fromCharCode(charCode);
+    }
+    return bytes;
+  };
+
+  // 将整数转换为字节数组
+  const intToBytes = (num: number): string => {
+    if (num < 256) {
+      return String.fromCharCode(num);
+    }
+    let hex = num.toString(16);
+    if (hex.length % 2 !== 0) {
+      hex = '0' + hex;
+    }
+    return hexToBytes(hex);
   };
 
   // 生成支付宝 RSA2 密钥对
