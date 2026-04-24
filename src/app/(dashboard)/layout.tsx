@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +23,7 @@ const navigation = [
   { name: '支付订单', href: '/dashboard/order', icon: CreditCard },
   { name: '退款管理', href: '/dashboard/refund', icon: RefreshCw },
   { name: '密钥工具', href: '/dashboard/tools/key-generator', icon: Key },
+  { name: '支付测试', href: '/dashboard/tools/pay-test', icon: Zap },
 ];
 
 export default function DashboardLayout({
