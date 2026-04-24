@@ -17,7 +17,7 @@ export class SignService {
   /**
    * 将纯 Base64 密钥转换为 PEM 格式
    */
-  private static toPemKey(key: string, type: 'PRIVATE' | 'PUBLIC' | 'RSA PUBLIC' | 'RSA PRIVATE'): string {
+  private static toPemKey(key: string, type: 'PRIVATE' | 'PUBLIC' | 'RSA PUBLIC' | 'RSA PRIVATE' | 'PRIVATE KEY' | 'PUBLIC KEY'): string {
     // 如果已经是 PEM 格式，直接返回
     if (key.includes('-----BEGIN')) {
       return key;
@@ -172,7 +172,7 @@ export class SignService {
   }
 
   /**
-   * RSA 签名
+   * RSA 签名 - 使用 crypto.sign 兼容 OpenSSL 3.0
    */
   static rsaSign(
     data: string,
@@ -180,23 +180,26 @@ export class SignService {
     signType: SignType
   ): string {
     // 转换为 PEM 格式
-    let pemKey = this.toPemKey(privateKey, 'RSA PRIVATE');
+    let pemKey = this.toPemKey(privateKey, 'PRIVATE KEY');
     
-    // 转换为 PKCS#8 格式以兼容 OpenSSL 3.0
-    try {
-      const keyObject = crypto.createPrivateKey(pemKey);
-      pemKey = keyObject.export({ type: 'pkcs8', format: 'pem' }) as string;
-    } catch {
-      // 如果转换失败，尝试直接使用原密钥
+    // 如果不是 PKCS#8 格式，尝试转换
+    if (!pemKey.includes('-----BEGIN PRIVATE KEY-----')) {
+      try {
+        const keyObject = crypto.createPrivateKey(pemKey);
+        pemKey = keyObject.export({ type: 'pkcs8', format: 'pem' }) as string;
+      } catch {
+        // 如果转换失败，使用原始格式
+      }
     }
     
-    const sign = crypto.createSign(signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1');
-    sign.update(data);
-    return sign.sign(pemKey, 'base64');
+    // 使用 crypto.sign 代替 createSign，更兼容 OpenSSL 3.0
+    const algorithm = signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1';
+    const sign = crypto.sign(algorithm, Buffer.from(data, 'utf8'), pemKey);
+    return sign.toString('base64');
   }
 
   /**
-   * RSA 验签
+   * RSA 验签 - 使用 crypto.verify 兼容 OpenSSL 3.0
    */
   static rsaVerify(
     data: string,
@@ -205,19 +208,21 @@ export class SignService {
     signType: SignType
   ): boolean {
     // 转换为 PEM 格式
-    let pemKey = this.toPemKey(publicKey, 'RSA PUBLIC');
+    let pemKey = this.toPemKey(publicKey, 'PUBLIC KEY');
     
-    // 转换为 X.509 格式以兼容 OpenSSL 3.0
-    try {
-      const keyObject = crypto.createPublicKey(pemKey);
-      pemKey = keyObject.export({ type: 'spki', format: 'pem' }) as string;
-    } catch {
-      // 如果转换失败，尝试直接使用原密钥
+    // 如果不是 X.509 格式，尝试转换
+    if (!pemKey.includes('-----BEGIN PUBLIC KEY-----')) {
+      try {
+        const keyObject = crypto.createPublicKey(pemKey);
+        pemKey = keyObject.export({ type: 'spki', format: 'pem' }) as string;
+      } catch {
+        // 如果转换失败，使用原始格式
+      }
     }
     
-    const verify = crypto.createVerify(signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1');
-    verify.update(data);
-    return verify.verify(pemKey, sign, 'base64');
+    // 使用 crypto.verify 代替 createVerify，更兼容 OpenSSL 3.0
+    const algorithm = signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1';
+    return crypto.verify(algorithm, Buffer.from(data, 'utf8'), pemKey, Buffer.from(sign, 'base64'));
   }
 
   /**
