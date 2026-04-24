@@ -49,7 +49,7 @@ export class MerchantService {
   static async create(data: Partial<MerchantConfig>): Promise<number> {
     const fields = [
       'app_id', 'app_name', 'channel',
-      'alipay_app_id', 'alipay_private_key', 'alipay_public_key', 'alipay_notify_url',
+      'alipay_app_id', 'alipay_private_key', 'alipay_public_key', 'alipay_alipay_public_key', 'alipay_notify_url',
       'wechat_app_id', 'wechat_mch_id', 'wechat_api_key', 'wechat_private_key', 
       'wechat_public_cert', 'wechat_notify_url',
       'profit_sharing_enabled', 'alipay_royalty_mode', 'wechat_profit_sharing_enabled',
@@ -80,7 +80,7 @@ export class MerchantService {
 
     const fields = [
       'app_name', 'channel',
-      'alipay_app_id', 'alipay_private_key', 'alipay_public_key', 'alipay_notify_url',
+      'alipay_app_id', 'alipay_private_key', 'alipay_public_key', 'alipay_alipay_public_key', 'alipay_notify_url',
       'wechat_app_id', 'wechat_mch_id', 'wechat_api_key', 'wechat_private_key', 
       'wechat_public_cert', 'wechat_notify_url',
       'profit_sharing_enabled', 'alipay_royalty_mode', 'wechat_profit_sharing_enabled',

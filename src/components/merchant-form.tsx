@@ -29,6 +29,7 @@ const merchantSchema = z.object({
   alipay_app_id: z.string().optional(),
   alipay_private_key: z.string().optional(),
   alipay_public_key: z.string().optional(),
+  alipay_alipay_public_key: z.string().optional(), // 支付宝返回的公钥
   alipay_notify_url: z.string().url('请输入有效的URL').optional().or(z.literal('')),
   // 微信配置
   wechat_app_id: z.string().optional(),
@@ -53,6 +54,7 @@ interface MerchantFormProps {
     alipay_app_id?: string;
     alipay_private_key?: string;
     alipay_public_key?: string;
+    alipay_alipay_public_key?: string; // 支付宝返回的公钥
     wechat_app_id?: string;
     wechat_mch_id?: string;
     wechat_api_key?: string;
@@ -119,6 +121,7 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
           alipay_app_id: merchant.alipay_app_id || '',
           alipay_private_key: merchant.alipay_private_key || '',
           alipay_public_key: merchant.alipay_public_key || '',
+          alipay_alipay_public_key: merchant.alipay_alipay_public_key || '',
           wechat_app_id: merchant.wechat_app_id || '',
           wechat_mch_id: merchant.wechat_mch_id || '',
           wechat_api_key: merchant.wechat_api_key || '',
@@ -133,6 +136,7 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
           alipay_app_id: '',
           alipay_private_key: '',
           alipay_public_key: '',
+          alipay_alipay_public_key: '',
           wechat_app_id: '',
           wechat_mch_id: '',
           wechat_api_key: '',
@@ -350,8 +354,8 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="alipay_private_key">应用私钥</Label>
-                <span className="text-xs text-slate-500">PKCS#8 格式</span>
+                <Label htmlFor="alipay_private_key">应用私钥（PKCS#8）</Label>
+                <span className="text-xs text-slate-500">用于签名</span>
               </div>
               <textarea
                 id="alipay_private_key"
@@ -362,16 +366,31 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="alipay_public_key">应用公钥（自动生成）</Label>
+              <Label htmlFor="alipay_public_key">应用公钥</Label>
               <textarea
                 id="alipay_public_key"
                 {...register('alipay_public_key')}
-                placeholder="点击生成密钥后会自动填入"
-                className="w-full h-20 px-3 py-2 text-sm border rounded-md font-mono bg-slate-50"
+                placeholder="点击生成密钥后会自动填入，将此公钥填入支付宝开放平台"
+                className="w-full h-16 px-3 py-2 text-sm border rounded-md font-mono bg-slate-50"
                 readOnly
               />
               <p className="text-xs text-slate-500">
-                将此公钥填入支付宝开放平台后台，支付宝会返回公钥
+                将此公钥填入支付宝开放平台，支付宝会返回「支付宝公钥」
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <Label htmlFor="alipay_alipay_public_key">支付宝公钥</Label>
+              <textarea
+                id="alipay_alipay_public_key"
+                {...register('alipay_alipay_public_key')}
+                placeholder="从支付宝开放平台获取，用于验签"
+                className="w-full h-16 px-3 py-2 text-sm border rounded-md font-mono"
+              />
+              <p className="text-xs text-amber-600">
+                支付宝返回的公钥，用于验证回调签名的真实性
               </p>
             </div>
           </CardContent>

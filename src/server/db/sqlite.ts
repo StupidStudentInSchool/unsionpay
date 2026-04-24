@@ -35,6 +35,7 @@ export function initializeDatabase() {
       alipay_app_id TEXT,
       alipay_private_key TEXT,
       alipay_public_key TEXT,
+      alipay_alipay_public_key TEXT, -- 支付宝返回的公钥，用于验签
       alipay_notify_url TEXT,
       wechat_app_id TEXT,
       wechat_mch_id TEXT,

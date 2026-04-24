@@ -16,6 +16,7 @@ export interface MerchantRow {
   alipay_app_id: string | null;
   alipay_private_key: string | null;
   alipay_public_key: string | null;
+  alipay_alipay_public_key: string | null; // 支付宝返回的公钥
   alipay_notify_url: string | null;
   wechat_app_id: string | null;
   wechat_mch_id: string | null;
