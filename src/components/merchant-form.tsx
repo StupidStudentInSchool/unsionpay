@@ -65,7 +65,7 @@ interface MerchantFormProps {
   onCancel: () => void;
 }
 
-// 生成 RSA 密钥对 (PKCS#8 格式)
+// 生成 RSA 密钥对 (PKCS#8 私钥, PKCS#1 Base64 公钥)
 async function generateKeyPair(): Promise<{ privateKey: string; publicKey: string }> {
   const forge = await import('node-forge');
   
@@ -78,8 +78,43 @@ async function generateKeyPair(): Promise<{ privateKey: string; publicKey: strin
     forge.util.encode64(privateKeyPkcs8) + 
     '\n-----END PRIVATE KEY-----';
   
-  // 公钥
-  const publicKey = forge.pki.publicKeyToPem(keypair.publicKey);
+  // PKCS#1 格式公钥（纯 Base64，支付宝要求）
+  const publicKeyHex = keypair.publicKey.n.toString(16);
+  const exponent = keypair.publicKey.e.toString(); // 转换为字符串
+  
+  // 将 hex 转换为 bytes
+  let nBytes = '';
+  let hexMod = publicKeyHex;
+  if (hexMod.length % 2 !== 0) hexMod = '0' + hexMod;
+  for (let i = 0; i < hexMod.length; i += 2) {
+    nBytes += String.fromCharCode(parseInt(hexMod.substr(i, 2), 16));
+  }
+  
+  let eBytes = '';
+  const expNum = parseInt(exponent, 10);
+  if (expNum < 256) {
+    eBytes = String.fromCharCode(expNum);
+  } else {
+    let hexExp = expNum.toString(16);
+    if (hexExp.length % 2 !== 0) hexExp = '0' + hexExp;
+    for (let i = 0; i < hexExp.length; i += 2) {
+      eBytes += String.fromCharCode(parseInt(hexExp.substr(i, 2), 16));
+    }
+  }
+  
+  // 构建 PKCS#1 RSAPublicKey ASN.1 结构
+  const asn1Sequence = forge.asn1.create(
+    forge.asn1.Class.UNIVERSAL,
+    forge.asn1.Type.SEQUENCE,
+    true,
+    [
+      forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.INTEGER, false, nBytes),
+      forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.INTEGER, false, eBytes)
+    ]
+  );
+  
+  const der = forge.asn1.toDer(asn1Sequence).getBytes();
+  const publicKey = forge.util.encode64(der); // 纯 Base64 字符串
   
   return { privateKey, publicKey };
 }
