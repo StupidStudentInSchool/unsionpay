@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Wand2, RefreshCw } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const merchantSchema = z.object({
   app_id: z.string().min(1, '请输入商户ID'),
@@ -65,77 +65,9 @@ interface MerchantFormProps {
   onCancel: () => void;
 }
 
-// 生成 RSA 密钥对 (PKCS#8 私钥和公钥，纯 Base64 字符串)
-async function generateKeyPair(): Promise<{ privateKey: string; publicKey: string }> {
-  const forge = await import('node-forge');
-  
-  // 生成 RSA 密钥对 (2048位)
-  const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
-  
-  // PKCS#8 格式私钥（纯 Base64 字符串）
-  const privateKeyAsn1 = forge.pki.privateKeyToAsn1(keypair.privateKey);
-  const privateKeyDer = forge.asn1.toDer(privateKeyAsn1).getBytes();
-  const privateKey = forge.util.encode64(privateKeyDer);
-  
-  // PKCS#1 格式公钥（纯 Base64，支付宝要求）
-  const publicKeyHex = keypair.publicKey.n.toString(16);
-  const exponent = keypair.publicKey.e.toString(); // 转换为字符串
-  
-  // 将 hex 转换为 bytes
-  let nBytes = '';
-  let hexMod = publicKeyHex;
-  if (hexMod.length % 2 !== 0) hexMod = '0' + hexMod;
-  for (let i = 0; i < hexMod.length; i += 2) {
-    nBytes += String.fromCharCode(parseInt(hexMod.substr(i, 2), 16));
-  }
-  
-  let eBytes = '';
-  const expNum = parseInt(exponent, 10);
-  if (expNum < 256) {
-    eBytes = String.fromCharCode(expNum);
-  } else {
-    let hexExp = expNum.toString(16);
-    if (hexExp.length % 2 !== 0) hexExp = '0' + hexExp;
-    for (let i = 0; i < hexExp.length; i += 2) {
-      eBytes += String.fromCharCode(parseInt(hexExp.substr(i, 2), 16));
-    }
-  }
-  
-  // 构建 PKCS#1 RSAPublicKey ASN.1 结构
-  const asn1Sequence = forge.asn1.create(
-    forge.asn1.Class.UNIVERSAL,
-    forge.asn1.Type.SEQUENCE,
-    true,
-    [
-      forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.INTEGER, false, nBytes),
-      forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.INTEGER, false, eBytes)
-    ]
-  );
-  
-  const der = forge.asn1.toDer(asn1Sequence).getBytes();
-  const publicKey = forge.util.encode64(der); // 纯 Base64 字符串
-  
-  return { privateKey, publicKey };
-}
-
-// 生成微信 APIv2 密钥 (32位随机字符串)
-function generateWechatApiKey(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let key = '';
-  for (let i = 0; i < 32; i++) {
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return key;
-}
-
 export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
-  // 密钥生成状态
-  const [generatingAlipay, setGeneratingAlipay] = useState(false);
-  const [generatingWechat, setGeneratingWechat] = useState(false);
-  const [generatingWechatApiKey, setGeneratingWechatApiKey] = useState(false);
 
   const {
     register,
@@ -181,49 +113,6 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
   });
 
   const channel = watch('channel');
-
-  // 生成支付宝密钥对
-  const handleGenerateAlipayKeys = async () => {
-    setGeneratingAlipay(true);
-    try {
-      const keys = await generateKeyPair();
-      setValue('alipay_private_key', keys.privateKey);
-      setValue('alipay_public_key', keys.publicKey);
-    } catch (err) {
-      console.error('生成支付宝密钥失败:', err);
-      alert('生成失败，请重试');
-    } finally {
-      setGeneratingAlipay(false);
-    }
-  };
-
-  // 生成微信 APIv3 密钥对
-  const handleGenerateWechatKeys = async () => {
-    setGeneratingWechat(true);
-    try {
-      const keys = await generateKeyPair();
-      setValue('wechat_private_key', keys.privateKey);
-    } catch (err) {
-      console.error('生成微信密钥失败:', err);
-      alert('生成失败，请重试');
-    } finally {
-      setGeneratingWechat(false);
-    }
-  };
-
-  // 生成微信 APIv2 密钥
-  const handleGenerateWechatApiKey = () => {
-    setGeneratingWechatApiKey(true);
-    try {
-      const key = generateWechatApiKey();
-      setValue('wechat_api_key', key);
-    } catch (err) {
-      console.error('生成微信API密钥失败:', err);
-      alert('生成失败，请重试');
-    } finally {
-      setGeneratingWechatApiKey(false);
-    }
-  };
 
   const onSubmit = async (data: MerchantFormData) => {
     setLoading(true);
@@ -344,24 +233,7 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
       {(channel === 'alipay' || channel === 'both') && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">支付宝配置</CardTitle>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleGenerateAlipayKeys}
-                disabled={generatingAlipay}
-                className="gap-1"
-              >
-                {generatingAlipay ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Wand2 className="w-4 h-4" />
-                )}
-                {generatingAlipay ? '生成中...' : '一键生成密钥'}
-              </Button>
-            </div>
+            <CardTitle className="text-base">支付宝配置</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -388,13 +260,13 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="alipay_private_key">应用私钥（PKCS#8）</Label>
+                <Label htmlFor="alipay_private_key">应用私钥</Label>
                 <span className="text-xs text-slate-500">用于签名</span>
               </div>
               <textarea
                 id="alipay_private_key"
                 {...register('alipay_private_key')}
-                placeholder="点击右侧按钮自动生成，或手动粘贴私钥"
+                placeholder="使用密钥工具生成后粘贴"
                 className="w-full h-24 px-3 py-2 text-sm border rounded-md font-mono"
               />
             </div>
@@ -404,12 +276,11 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
               <textarea
                 id="alipay_public_key"
                 {...register('alipay_public_key')}
-                placeholder="点击生成密钥后会自动填入，将此公钥填入支付宝开放平台"
-                className="w-full h-16 px-3 py-2 text-sm border rounded-md font-mono bg-slate-50"
-                readOnly
+                placeholder="从支付宝密钥工具或支付宝开放平台获取"
+                className="w-full h-16 px-3 py-2 text-sm border rounded-md font-mono"
               />
               <p className="text-xs text-slate-500">
-                将此公钥填入支付宝开放平台，支付宝会返回「支付宝公钥」
+                使用密钥工具生成后粘贴，或从支付宝开放平台获取
               </p>
             </div>
 
@@ -462,28 +333,11 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
 
             {/* APIv2 密钥 */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="wechat_api_key">APIv2 密钥</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleGenerateWechatApiKey}
-                  disabled={generatingWechatApiKey}
-                  className="gap-1 text-xs"
-                >
-                  {generatingWechatApiKey ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3 h-3" />
-                  )}
-                  {generatingWechatApiKey ? '生成中...' : '生成'}
-                </Button>
-              </div>
+              <Label htmlFor="wechat_api_key">APIv2 密钥</Label>
               <Input
                 id="wechat_api_key"
                 {...register('wechat_api_key')}
-                placeholder="点击右侧按钮生成32位随机密钥"
+                placeholder="使用密钥工具生成32位随机密钥"
                 className="font-mono"
               />
             </div>
@@ -501,33 +355,13 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
 
             {/* APIv3 私钥 */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="wechat_private_key">APIv3 私钥（PKCS#8）</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleGenerateWechatKeys}
-                  disabled={generatingWechat}
-                  className="gap-1"
-                >
-                  {generatingWechat ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-4 h-4" />
-                  )}
-                  {generatingWechat ? '生成中...' : '一键生成密钥'}
-                </Button>
-              </div>
+              <Label htmlFor="wechat_private_key">APIv3 私钥</Label>
               <textarea
                 id="wechat_private_key"
                 {...register('wechat_private_key')}
-                placeholder="点击右侧按钮自动生成 APIv3 私钥"
+                placeholder="使用密钥工具生成后粘贴"
                 className="w-full h-24 px-3 py-2 text-sm border rounded-md font-mono"
               />
-              <p className="text-xs text-slate-500">
-                将生成的公钥上传到微信商户平台获取平台证书
-              </p>
             </div>
 
             <div className="space-y-2">
