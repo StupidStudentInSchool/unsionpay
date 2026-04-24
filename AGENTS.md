@@ -80,40 +80,56 @@ pnpm ts-check   # 类型检查
 ```
 POST /api/pay          # 统一支付下单
 GET  /api/pay          # 支付查询
+GET  /api/order        # 订单列表
+GET  /api/order?summary=true  # 订单汇总统计
 ```
 
 ### 退款
 
 ```
-POST /api/refund       # 统一退款
-GET  /api/refund       # 退款查询
+POST /api/refund           # 统一退款
+GET  /api/refund           # 退款查询
+GET  /api/refund/list      # 退款列表
 ```
 
 ### 分账
 
 ```
-POST /api/profit-sharing   # 统一分账
-GET  /api/profit-sharing   # 分账查询
-POST /api/profit-sharing/finish  # 完结分账
+POST /api/profit-sharing       # 统一分账
+GET  /api/profit-sharing        # 分账查询
+POST /api/profit-sharing/finish # 完结分账
+POST /api/profit-sharing/return # 退款返回
 ```
 
 ### 商户管理
 
 ```
-GET  /api/merchant         # 商户列表
-POST /api/merchant          # 创建商户
-GET  /api/merchant/:appId   # 商户详情
-PUT  /api/merchant/:appId   # 更新商户
+GET    /api/merchant          # 商户列表
+POST   /api/merchant          # 创建商户
+GET    /api/merchant/:appId  # 商户详情
+PUT    /api/merchant/:appId  # 更新商户
+DELETE /api/merchant/:appId  # 删除商户
 ```
 
 ### 回调通知
 
 ```
-POST /api/notify/alipay     # 支付宝回调
-POST /api/notify/wechat     # 微信支付回调
+POST /api/notify/alipay  # 支付宝回调
+POST /api/notify/wechat  # 微信支付回调
 ```
 
-## 页面访问
+## 前端页面
 
-- 首页/文档: `http://localhost:5000/`
-- 管理后台: `http://localhost:5000/dashboard`
+- **首页/文档**: `http://localhost:5000/`
+- **管理后台**: `http://localhost:5000/dashboard`
+  - 仪表盘: `/dashboard` - 数据统计概览
+  - 商户管理: `/dashboard/merchant` - 商户CRUD
+  - 订单管理: `/dashboard/order` - 订单查询
+  - 退款管理: `/dashboard/refund` - 退款处理
+
+## 注意事项
+
+1. **数据库依赖**: 所有API需要MySQL数据库连接才能正常工作
+2. **金额单位**: API请求/响应中金额统一使用**分**为单位，前端展示时需转换为元
+3. **签名机制**: 支付宝使用RSA2签名，微信使用MD5签名
+4. **分账规则**: 微信分账需在支付前开通分账功能，退款时注意退款返回

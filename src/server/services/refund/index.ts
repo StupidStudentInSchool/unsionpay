@@ -289,3 +289,102 @@ export class RefundService {
 }
 
 export default RefundService;
+
+// =====================================================
+// 退款列表查询
+// =====================================================
+
+export interface RefundListParams {
+  page: number;
+  pageSize: number;
+  status?: string;
+  appId?: string;
+}
+
+export interface RefundListResult {
+  list: Array<{
+    refund_no: string;
+    order_no: string;
+    merchant_order_no: string;
+    channel: string;
+    total_amount: number;
+    refund_amount: number;
+    status: string;
+    reason?: string;
+    created_at: string;
+    refund_time?: string;
+  }>;
+  total: number;
+}
+
+export async function getRefundList(params: RefundListParams): Promise<RefundListResult> {
+  const { page, pageSize, status, appId } = params;
+
+  let sql = `
+    SELECT r.refund_no, r.order_no, p.merchant_order_no, r.channel,
+           r.total_amount, r.refund_amount, r.status, r.reason,
+           r.created_at, r.refund_time
+    FROM refund_order r
+    JOIN pay_order p ON r.order_id = p.id
+    WHERE 1=1
+  `;
+  let countSql = `
+    SELECT COUNT(*) as total FROM refund_order r
+    JOIN pay_order p ON r.order_id = p.id
+    WHERE 1=1
+  `;
+  const paramsArr: unknown[] = [];
+
+  if (appId) {
+    sql += ' AND p.app_id = ?';
+    countSql += ' AND p.app_id = ?';
+    paramsArr.push(appId);
+  }
+
+  if (status) {
+    sql += ' AND r.status = ?';
+    countSql += ' AND r.status = ?';
+    paramsArr.push(status);
+  }
+
+  // Count
+  const countParams = appId || status ? paramsArr : [];
+  const countResult = await db.query<RowDataPacket[]>(countSql, countParams);
+  const total = (countResult[0] as { total: number }).total;
+
+  // List
+  sql += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
+  const listParams = [...paramsArr, pageSize, (page - 1) * pageSize];
+  const list = await db.query<RowDataPacket[]>(sql, listParams);
+
+  return {
+    list: list.map((item) => ({
+      refund_no: item.refund_no,
+      order_no: item.order_no,
+      merchant_order_no: item.merchant_order_no,
+      channel: item.channel,
+      total_amount: item.total_amount,
+      refund_amount: item.refund_amount,
+      status: item.status,
+      reason: item.reason,
+      created_at: item.created_at?.toISOString().split('T')[0] || '',
+      refund_time: item.refund_time?.toISOString().split('T')[0],
+    })),
+    total,
+  };
+}
+
+export async function queryRefund(appId: string, outRefundNo: string) {
+  return RefundService.query(appId, outRefundNo);
+}
+
+export function formatRefundListResponse(result: RefundListResult) {
+  return {
+    code: 0,
+    message: 'success',
+    data: {
+      list: result.list,
+      total: result.total,
+    },
+  };
+}

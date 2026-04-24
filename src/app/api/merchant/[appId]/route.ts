@@ -107,3 +107,34 @@ export async function PUT(
     return errorResponse('更新商户失败', 500);
   }
 }
+
+/**
+ * DELETE /api/merchant/[appId]
+ * 删除商户
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ appId: string }> }
+) {
+  const requestId = generateRequestId();
+
+  try {
+    const { appId } = await params;
+    const merchant = await MerchantService.getByAppId(appId);
+
+    if (!merchant) {
+      return errorResponse('商户不存在', 404);
+    }
+
+    const success = await MerchantService.delete(merchant.id);
+
+    if (!success) {
+      return errorResponse('删除失败');
+    }
+
+    return apiResponse({ success: true });
+  } catch (error) {
+    console.error(`[${requestId}] Delete merchant error:`, error);
+    return errorResponse('删除商户失败', 500);
+  }
+}

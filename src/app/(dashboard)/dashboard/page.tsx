@@ -2,14 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  CreditCard,
-  Users,
-  RefreshCw,
-  TrendingUp,
-  TrendingDown,
-  ArrowRight,
-} from 'lucide-react';
+import { CreditCard, Users, RefreshCw, TrendingUp, ArrowRight, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,70 +33,68 @@ interface RecentOrder {
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<Stats>({
-    totalOrders: 0,
-    paidOrders: 0,
-    totalAmount: 0,
-    refundAmount: 0,
-    merchantCount: 0,
-  });
+  const [stats, setStats] = useState<Stats | null>(null);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // 模拟加载数据
-    const timer = setTimeout(() => {
-      setStats({
-        totalOrders: 1256,
-        paidOrders: 1189,
-        totalAmount: 156789.50,
-        refundAmount: 3250.00,
-        merchantCount: 8,
-      });
-      setRecentOrders([
-        {
-          order_no: 'PAY1A2B3C4D5E',
-          merchant_order_no: 'ORD20240101001',
-          channel: 'alipay',
-          total_amount: 299.00,
-          status: 'paid',
-          created_at: '2024-01-15 10:30:00',
-        },
-        {
-          order_no: 'PAY6E7F8G9H0I',
-          merchant_order_no: 'ORD20240101002',
-          channel: 'wechat',
-          total_amount: 1580.00,
-          status: 'paid',
-          created_at: '2024-01-15 11:15:00',
-        },
-        {
-          order_no: 'PAY2J3K4L5M6N',
-          merchant_order_no: 'ORD20240101003',
-          channel: 'alipay',
-          total_amount: 89.90,
-          status: 'pending',
-          created_at: '2024-01-15 12:00:00',
-        },
-        {
-          order_no: 'PAY7O8P9Q0R1S',
-          merchant_order_no: 'ORD20240101004',
-          channel: 'wechat',
-          total_amount: 456.00,
-          status: 'paid',
-          created_at: '2024-01-15 13:30:00',
-        },
-      ]);
-      setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
+    fetchDashboardData();
   }, []);
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [merchantRes, orderRes] = await Promise.all([
+        fetch('/api/merchant?pageSize=1'),
+        fetch('/api/order/summary'),
+      ]);
+
+      const merchantData = await merchantRes.json();
+      
+      // 尝试获取订单汇总数据
+      let orderSummary = null;
+      try {
+        const orderData = await orderRes.json();
+        if (orderData.code === 0) {
+          orderSummary = orderData.data;
+        }
+      } catch {
+        // 订单汇总接口可能不存在
+      }
+
+      setStats({
+        totalOrders: orderSummary?.totalOrders || 0,
+        paidOrders: orderSummary?.paidOrders || 0,
+        totalAmount: orderSummary?.totalAmount || 0,
+        refundAmount: orderSummary?.refundAmount || 0,
+        merchantCount: merchantData.data?.total || 0,
+      });
+
+      // 获取最近订单
+      try {
+        const ordersRes = await fetch('/api/order?pageSize=5');
+        const ordersData = await ordersRes.json();
+        if (ordersData.code === 0 && ordersData.data?.list) {
+          setRecentOrders(ordersData.data.list);
+        }
+      } catch {
+        setRecentOrders([]);
+      }
+    } catch (err) {
+      setError('加载数据失败，请检查数据库连接');
+      console.error('Dashboard fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const formatAmount = (amount: number) => {
     return new Intl.NumberFormat('zh-CN', {
       style: 'currency',
       currency: 'CNY',
-    }).format(amount);
+    }).format(amount / 100);
   };
 
   const getStatusBadge = (status: string) => {
@@ -141,6 +132,21 @@ export default function DashboardPage() {
         <p className="text-slate-500 mt-1">支付数据概览</p>
       </div>
 
+      {/* 错误提示 */}
+      {error && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardContent className="p-4 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-orange-600" />
+            <div>
+              <p className="font-medium text-orange-800">{error}</p>
+              <p className="text-sm text-orange-600 mt-1">
+                请确保 MySQL 数据库已启动并执行了初始化脚本
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -148,7 +154,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500">总订单数</p>
-                <p className="text-2xl font-bold mt-1">{stats.totalOrders.toLocaleString()}</p>
+                <p className="text-2xl font-bold mt-1">{(stats?.totalOrders || 0).toLocaleString()}</p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                 <CreditCard className="w-6 h-6 text-blue-600" />
@@ -156,7 +162,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center mt-4 text-sm text-green-600">
               <TrendingUp className="w-4 h-4 mr-1" />
-              <span>+12.5% 较上月</span>
+              <span>成功率 {stats?.totalOrders ? ((stats.paidOrders / stats.totalOrders) * 100).toFixed(1) : 0}%</span>
             </div>
           </CardContent>
         </Card>
@@ -166,14 +172,11 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500">支付成功</p>
-                <p className="text-2xl font-bold mt-1">{stats.paidOrders.toLocaleString()}</p>
+                <p className="text-2xl font-bold mt-1">{(stats?.paidOrders || 0).toLocaleString()}</p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                 <TrendingUp className="w-6 h-6 text-green-600" />
               </div>
-            </div>
-            <div className="flex items-center mt-4 text-sm text-green-600">
-              <span>{((stats.paidOrders / stats.totalOrders) * 100).toFixed(1)}% 成功率</span>
             </div>
           </CardContent>
         </Card>
@@ -183,15 +186,13 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500">交易总额</p>
-                <p className="text-2xl font-bold mt-1">{formatAmount(stats.totalAmount)}</p>
+                <p className="text-2xl font-bold mt-1">
+                  {stats?.totalAmount ? formatAmount(stats.totalAmount) : '¥0.00'}
+                </p>
               </div>
               <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center">
                 <CreditCard className="w-6 h-6 text-cyan-600" />
               </div>
-            </div>
-            <div className="flex items-center mt-4 text-sm text-green-600">
-              <TrendingUp className="w-4 h-4 mr-1" />
-              <span>+8.3% 较上月</span>
             </div>
           </CardContent>
         </Card>
@@ -201,14 +202,13 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500">退款总额</p>
-                <p className="text-2xl font-bold mt-1">{formatAmount(stats.refundAmount)}</p>
+                <p className="text-2xl font-bold mt-1">
+                  {stats?.refundAmount ? formatAmount(stats.refundAmount) : '¥0.00'}
+                </p>
               </div>
               <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
                 <RefreshCw className="w-6 h-6 text-orange-600" />
               </div>
-            </div>
-            <div className="flex items-center mt-4 text-sm text-slate-500">
-              <span>{((stats.refundAmount / stats.totalAmount) * 100).toFixed(2)}% 退款率</span>
             </div>
           </CardContent>
         </Card>
@@ -225,7 +225,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="font-medium">商户管理</p>
-                  <p className="text-sm text-slate-500">{stats.merchantCount} 个商户</p>
+                  <p className="text-sm text-slate-500">{stats?.merchantCount || 0} 个商户</p>
                 </div>
               </div>
               <ArrowRight className="w-5 h-5 text-slate-400" />
@@ -280,32 +280,39 @@ export default function DashboardPage() {
           </Link>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>订单号</TableHead>
-                <TableHead>商户订单号</TableHead>
-                <TableHead>支付渠道</TableHead>
-                <TableHead className="text-right">金额</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>时间</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recentOrders.map((order) => (
-                <TableRow key={order.order_no}>
-                  <TableCell className="font-mono text-sm">{order.order_no}</TableCell>
-                  <TableCell className="font-mono text-sm">{order.merchant_order_no}</TableCell>
-                  <TableCell>{getChannelBadge(order.channel)}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatAmount(order.total_amount / 100)}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(order.status)}</TableCell>
-                  <TableCell className="text-slate-500">{order.created_at}</TableCell>
+          {recentOrders.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <p>暂无订单数据</p>
+              <p className="text-sm mt-1">创建商户后即可发起支付</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>订单号</TableHead>
+                  <TableHead>商户订单号</TableHead>
+                  <TableHead>支付渠道</TableHead>
+                  <TableHead className="text-right">金额</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>时间</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {recentOrders.map((order) => (
+                  <TableRow key={order.order_no}>
+                    <TableCell className="font-mono text-sm">{order.order_no}</TableCell>
+                    <TableCell className="font-mono text-sm">{order.merchant_order_no}</TableCell>
+                    <TableCell>{getChannelBadge(order.channel)}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatAmount(order.total_amount)}
+                    </TableCell>
+                    <TableCell>{getStatusBadge(order.status)}</TableCell>
+                    <TableCell className="text-slate-500">{order.created_at}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

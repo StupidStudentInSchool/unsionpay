@@ -361,3 +361,146 @@ export class PayService {
 }
 
 export default PayService;
+
+// =====================================================
+// 订单列表查询
+// =====================================================
+
+export interface OrderListParams {
+  page: number;
+  pageSize: number;
+  status?: string;
+  channel?: string;
+  outTradeNo?: string;
+  appId?: string;
+}
+
+export interface OrderListResult {
+  list: Array<{
+    order_no: string;
+    merchant_order_no: string;
+    app_id: string;
+    channel: string;
+    trade_type: string;
+    total_amount: number;
+    status: string;
+    paid_time?: string;
+    created_at: string;
+  }>;
+  total: number;
+}
+
+export interface OrderSummaryResult {
+  totalOrders: number;
+  paidOrders: number;
+  totalAmount: number;
+  refundAmount: number;
+}
+
+export async function getOrderList(params: OrderListParams): Promise<OrderListResult> {
+  const { page, pageSize, status, channel, appId } = params;
+
+  let sql = 'SELECT * FROM pay_order WHERE 1=1';
+  let countSql = 'SELECT COUNT(*) as total FROM pay_order WHERE 1=1';
+  const paramsArr: unknown[] = [];
+
+  if (appId) {
+    sql += ' AND app_id = ?';
+    countSql += ' AND app_id = ?';
+    paramsArr.push(appId);
+  }
+
+  if (status) {
+    sql += ' AND status = ?';
+    countSql += ' AND status = ?';
+    paramsArr.push(status);
+  }
+
+  if (channel) {
+    sql += ' AND channel = ?';
+    countSql += ' AND channel = ?';
+    paramsArr.push(channel);
+  }
+
+  // Count
+  const countParams = appId || status || channel ? paramsArr : [];
+  const countResult = await db.query<RowDataPacket[]>(countSql, countParams);
+  const total = (countResult[0] as { total: number }).total;
+
+  // List
+  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  const listParams = [...paramsArr, pageSize, (page - 1) * pageSize];
+  const list = await db.query<OrderRow[]>(sql, listParams);
+
+  return {
+    list: list.map((item) => ({
+      order_no: item.order_no,
+      merchant_order_no: item.merchant_order_no,
+      app_id: item.app_id,
+      channel: item.channel,
+      trade_type: item.trade_type,
+      total_amount: item.total_amount,
+      status: item.status,
+      paid_time: item.paid_time?.toISOString(),
+      created_at: item.created_at?.toISOString().split('T')[0] || '',
+    })),
+    total,
+  };
+}
+
+export async function getOrderSummary(): Promise<OrderSummaryResult> {
+  // 获取订单统计
+  const orderSql = `
+    SELECT 
+      COUNT(*) as totalOrders,
+      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paidOrders,
+      SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END) as totalAmount
+    FROM pay_order
+  `;
+  const orderResult = await db.query<RowDataPacket[]>(orderSql);
+  const orderStats = orderResult[0] as {
+    totalOrders: number;
+    paidOrders: number;
+    totalAmount: number;
+  };
+
+  // 获取退款统计
+  const refundSql = `
+    SELECT COALESCE(SUM(refund_amount), 0) as refundAmount
+    FROM refund_order
+    WHERE status = 'success'
+  `;
+  const refundResult = await db.query<RowDataPacket[]>(refundSql);
+  const refundAmount = (refundResult[0] as { refundAmount: number }).refundAmount;
+
+  return {
+    totalOrders: orderStats.totalOrders || 0,
+    paidOrders: orderStats.paidOrders || 0,
+    totalAmount: orderStats.totalAmount || 0,
+    refundAmount: refundAmount || 0,
+  };
+}
+
+export function formatOrderListResponse(result: OrderListResult) {
+  return {
+    code: 0,
+    message: 'success',
+    data: {
+      list: result.list,
+      total: result.total,
+    },
+  };
+}
+
+export function formatOrderSummaryResponse(summary: OrderSummaryResult) {
+  return {
+    code: 0,
+    message: 'success',
+    data: {
+      totalOrders: summary.totalOrders,
+      paidOrders: summary.paidOrders,
+      totalAmount: summary.totalAmount,
+      refundAmount: summary.refundAmount,
+    },
+  };
+}

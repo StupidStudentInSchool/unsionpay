@@ -198,6 +198,15 @@ export class MerchantService {
       total: (countResult[0] as { total: number }).total
     };
   }
+
+  /**
+   * 删除商户
+   */
+  static async delete(id: number): Promise<boolean> {
+    const sql = `DELETE FROM merchant_config WHERE id = ?`;
+    const result = await db.execute(sql, [id]);
+    return result.affectedRows > 0;
+  }
 }
 
 export default MerchantService;

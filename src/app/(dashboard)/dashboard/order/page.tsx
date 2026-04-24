@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, RefreshCw, Download } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Search, RefreshCw, Download, AlertCircle } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +37,9 @@ interface Order {
 
 export default function OrderPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string>('all');
   const [channel, setChannel] = useState<string>('all');
@@ -50,78 +52,28 @@ export default function OrderPage() {
 
   const fetchOrders = async () => {
     setLoading(true);
+    setError(null);
     try {
-      // 模拟数据
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      setOrders([
-        {
-          order_no: 'PAY1A2B3C4D5E',
-          merchant_order_no: 'ORD20240115001',
-          app_id: 'app_test_001',
-          channel: 'alipay',
-          trade_type: 'native',
-          total_amount: 29900,
-          status: 'paid',
-          paid_time: '2024-01-15 10:35:00',
-          created_at: '2024-01-15 10:30:00',
-        },
-        {
-          order_no: 'PAY6E7F8G9H0I',
-          merchant_order_no: 'ORD20240115002',
-          app_id: 'app_ec_001',
-          channel: 'wechat',
-          trade_type: 'jsapi',
-          total_amount: 158000,
-          status: 'paid',
-          paid_time: '2024-01-15 11:20:00',
-          created_at: '2024-01-15 11:15:00',
-        },
-        {
-          order_no: 'PAY2J3K4L5M6N',
-          merchant_order_no: 'ORD20240115003',
-          app_id: 'app_test_001',
-          channel: 'alipay',
-          trade_type: 'app',
-          total_amount: 8990,
-          status: 'pending',
-          created_at: '2024-01-15 12:00:00',
-        },
-        {
-          order_no: 'PAY7O8P9Q0R1S',
-          merchant_order_no: 'ORD20240115004',
-          app_id: 'app_mini_001',
-          channel: 'wechat',
-          trade_type: 'native',
-          total_amount: 45600,
-          status: 'paid',
-          paid_time: '2024-01-15 13:35:00',
-          created_at: '2024-01-15 13:30:00',
-        },
-        {
-          order_no: 'PAY2T3U4V5W6X',
-          merchant_order_no: 'ORD20240115005',
-          app_id: 'app_ec_001',
-          channel: 'alipay',
-          trade_type: 'h5',
-          total_amount: 88800,
-          status: 'closed',
-          created_at: '2024-01-15 14:00:00',
-        },
-        {
-          order_no: 'PAY7Y8Z9A0B1C',
-          merchant_order_no: 'ORD20240115006',
-          app_id: 'app_test_001',
-          channel: 'wechat',
-          trade_type: 'app',
-          total_amount: 123400,
-          status: 'paid',
-          paid_time: '2024-01-15 15:10:00',
-          created_at: '2024-01-15 15:00:00',
-        },
-      ]);
-      setTotalPages(5);
-    } catch (error) {
-      console.error('Failed to fetch orders:', error);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: '10',
+      });
+      if (status !== 'all') params.set('status', status);
+      if (channel !== 'all') params.set('channel', channel);
+
+      const response = await fetch(`/api/order?${params}`);
+      const data = await response.json();
+
+      if (data.code === 0) {
+        setOrders(data.data?.list || []);
+        setTotal(data.data?.total || 0);
+        setTotalPages(Math.ceil((data.data?.total || 0) / 10));
+      } else {
+        setError(data.message || '获取订单列表失败');
+      }
+    } catch (err) {
+      setError('网络错误，请检查数据库连接');
+      console.error('Failed to fetch orders:', err);
     } finally {
       setLoading(false);
     }
@@ -171,9 +123,7 @@ export default function OrderPage() {
       order.order_no.toLowerCase().includes(search.toLowerCase()) ||
       order.merchant_order_no.toLowerCase().includes(search.toLowerCase()) ||
       order.app_id.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = status === 'all' || order.status === status;
-    const matchesChannel = channel === 'all' || order.channel === channel;
-    return matchesSearch && matchesStatus && matchesChannel;
+    return matchesSearch;
   });
 
   return (
@@ -183,6 +133,21 @@ export default function OrderPage() {
         <h1 className="text-2xl font-bold text-slate-800">支付订单</h1>
         <p className="text-slate-500 mt-1">查看和管理所有支付订单</p>
       </div>
+
+      {/* 错误提示 */}
+      {error && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardContent className="p-4 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-orange-600" />
+            <div>
+              <p className="font-medium text-orange-800">{error}</p>
+              <p className="text-sm text-orange-600 mt-1">
+                请确保数据库已连接并执行了初始化脚本
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 搜索和筛选 */}
       <Card>
@@ -227,10 +192,7 @@ export default function OrderPage() {
               刷新
             </Button>
 
-            <Button variant="outline">
-              <Download className="w-4 h-4 mr-2" />
-              导出
-            </Button>
+            <span className="text-sm text-slate-500 ml-auto">共 {total} 笔订单</span>
           </div>
         </CardContent>
       </Card>
@@ -238,36 +200,31 @@ export default function OrderPage() {
       {/* 订单列表 */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>订单号</TableHead>
-                <TableHead>商户订单号</TableHead>
-                <TableHead>应用</TableHead>
-                <TableHead>渠道</TableHead>
-                <TableHead>支付方式</TableHead>
-                <TableHead className="text-right">金额</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <p>暂无订单数据</p>
+              <p className="text-sm mt-1">创建商户后即可发起支付</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
-                    <div className="flex justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                    </div>
-                  </TableCell>
+                  <TableHead>订单号</TableHead>
+                  <TableHead>商户订单号</TableHead>
+                  <TableHead>应用</TableHead>
+                  <TableHead>渠道</TableHead>
+                  <TableHead>支付方式</TableHead>
+                  <TableHead className="text-right">金额</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>创建时间</TableHead>
                 </TableRow>
-              ) : filteredOrders.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-slate-500">
-                    暂无订单数据
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredOrders.map((order) => (
+              </TableHeader>
+              <TableBody>
+                {filteredOrders.map((order) => (
                   <TableRow key={order.order_no}>
                     <TableCell className="font-mono text-sm">{order.order_no}</TableCell>
                     <TableCell className="font-mono text-sm">{order.merchant_order_no}</TableCell>
@@ -280,46 +237,48 @@ export default function OrderPage() {
                     <TableCell>{getStatusBadge(order.status)}</TableCell>
                     <TableCell className="text-slate-500">{order.created_at}</TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       {/* 分页 */}
-      <div className="flex justify-center">
-        <Pagination>
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={() => setPage(Math.max(1, page - 1))}
-                className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-              />
-            </PaginationItem>
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const pageNum = i + 1;
-              return (
-                <PaginationItem key={pageNum}>
-                  <PaginationLink
-                    onClick={() => setPage(pageNum)}
-                    isActive={page === pageNum}
-                    className="cursor-pointer"
-                  >
-                    {pageNum}
-                  </PaginationLink>
-                </PaginationItem>
-              );
-            })}
-            <PaginationItem>
-              <PaginationNext
-                onClick={() => setPage(Math.min(totalPages, page + 1))}
-                className={page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      </div>
+      {totalPages > 1 && (
+        <div className="flex justify-center">
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  className={page === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                />
+              </PaginationItem>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const pageNum = i + 1;
+                return (
+                  <PaginationItem key={pageNum}>
+                    <PaginationLink
+                      onClick={() => setPage(pageNum)}
+                      isActive={page === pageNum}
+                      className="cursor-pointer"
+                    >
+                      {pageNum}
+                    </PaginationLink>
+                  </PaginationItem>
+                );
+              })}
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() => setPage(Math.min(totalPages, page + 1))}
+                  className={page === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
+      )}
     </div>
   );
 }

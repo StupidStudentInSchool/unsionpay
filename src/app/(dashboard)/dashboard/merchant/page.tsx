@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Plus, Search, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Plus, Search, MoreHorizontal, Pencil, Trash2, AlertCircle } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -14,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -43,7 +42,9 @@ interface Merchant {
 
 export default function MerchantPage() {
   const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState<Merchant | null>(null);
@@ -53,44 +54,21 @@ export default function MerchantPage() {
   }, []);
 
   const fetchMerchants = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const response = await fetch('/api/merchant');
       const data = await response.json();
+      
       if (data.code === 0) {
-        setMerchants(data.data.list || []);
+        setMerchants(data.data?.list || []);
+        setTotal(data.data?.total || 0);
+      } else {
+        setError(data.message || '获取商户列表失败');
       }
-    } catch (error) {
-      console.error('Failed to fetch merchants:', error);
-      // 使用模拟数据
-      setMerchants([
-        {
-          id: 1,
-          app_id: 'app_test_001',
-          app_name: '测试应用',
-          channel: 'both',
-          profit_sharing_enabled: true,
-          status: 'active',
-          created_at: '2024-01-01 10:00:00',
-        },
-        {
-          id: 2,
-          app_id: 'app_ec_001',
-          app_name: '电商平台',
-          channel: 'both',
-          profit_sharing_enabled: true,
-          status: 'active',
-          created_at: '2024-01-05 15:30:00',
-        },
-        {
-          id: 3,
-          app_id: 'app_mini_001',
-          app_name: '小程序应用',
-          channel: 'wechat',
-          profit_sharing_enabled: false,
-          status: 'active',
-          created_at: '2024-01-10 09:00:00',
-        },
-      ]);
+    } catch (err) {
+      setError('网络错误，请检查数据库连接');
+      console.error('Failed to fetch merchants:', err);
     } finally {
       setLoading(false);
     }
@@ -104,6 +82,24 @@ export default function MerchantPage() {
   const handleEditSuccess = () => {
     setEditingMerchant(null);
     fetchMerchants();
+  };
+
+  const handleDelete = async (merchant: Merchant) => {
+    if (!confirm(`确定要删除商户 ${merchant.app_name} 吗？`)) return;
+    
+    try {
+      const response = await fetch(`/api/merchant/${merchant.app_id}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.code === 0) {
+        fetchMerchants();
+      } else {
+        alert(data.message || '删除失败');
+      }
+    } catch (err) {
+      alert('网络错误');
+    }
   };
 
   const getChannelBadge = (channel: string) => {
@@ -160,6 +156,21 @@ export default function MerchantPage() {
         </Button>
       </div>
 
+      {/* 错误提示 */}
+      {error && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardContent className="p-4 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-orange-600" />
+            <div>
+              <p className="font-medium text-orange-800">{error}</p>
+              <p className="text-sm text-orange-600 mt-1">
+                请确保数据库已连接并执行了初始化脚本
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* 搜索 */}
       <Card>
         <CardContent className="p-4">
@@ -173,6 +184,7 @@ export default function MerchantPage() {
                 className="pl-10"
               />
             </div>
+            <span className="text-sm text-slate-500">共 {total} 个商户</span>
           </div>
         </CardContent>
       </Card>
@@ -180,56 +192,69 @@ export default function MerchantPage() {
       {/* 商户列表 */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>商户ID</TableHead>
-                <TableHead>商户名称</TableHead>
-                <TableHead>支付渠道</TableHead>
-                <TableHead>分账</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
-                <TableHead className="text-right">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMerchants.map((merchant) => (
-                <TableRow key={merchant.id}>
-                  <TableCell className="font-mono">{merchant.app_id}</TableCell>
-                  <TableCell className="font-medium">{merchant.app_name}</TableCell>
-                  <TableCell>{getChannelBadge(merchant.channel)}</TableCell>
-                  <TableCell>
-                    {merchant.profit_sharing_enabled ? (
-                      <Badge variant="default">已开通</Badge>
-                    ) : (
-                      <Badge variant="outline">未开通</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(merchant.status)}</TableCell>
-                  <TableCell className="text-slate-500">{merchant.created_at}</TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditingMerchant(merchant)}>
-                          <Pencil className="w-4 h-4 mr-2" />
-                          编辑
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600">
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          {filteredMerchants.length === 0 && !error ? (
+            <div className="text-center py-12">
+              <p className="text-slate-500">暂无商户数据</p>
+              <Button className="mt-4" onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                创建第一个商户
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>商户ID</TableHead>
+                  <TableHead>商户名称</TableHead>
+                  <TableHead>支付渠道</TableHead>
+                  <TableHead>分账</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>创建时间</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredMerchants.map((merchant) => (
+                  <TableRow key={merchant.id}>
+                    <TableCell className="font-mono">{merchant.app_id}</TableCell>
+                    <TableCell className="font-medium">{merchant.app_name}</TableCell>
+                    <TableCell>{getChannelBadge(merchant.channel)}</TableCell>
+                    <TableCell>
+                      {merchant.profit_sharing_enabled ? (
+                        <Badge variant="default">已开通</Badge>
+                      ) : (
+                        <Badge variant="outline">未开通</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{getStatusBadge(merchant.status)}</TableCell>
+                    <TableCell className="text-slate-500">{merchant.created_at}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditingMerchant(merchant)}>
+                            <Pencil className="w-4 h-4 mr-2" />
+                            编辑
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="text-red-600"
+                            onClick={() => handleDelete(merchant)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
