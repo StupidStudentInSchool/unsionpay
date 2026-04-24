@@ -65,18 +65,17 @@ interface MerchantFormProps {
   onCancel: () => void;
 }
 
-// 生成 RSA 密钥对 (PKCS#8 私钥, PKCS#1 Base64 公钥)
+// 生成 RSA 密钥对 (PKCS#8 私钥和公钥，纯 Base64 字符串)
 async function generateKeyPair(): Promise<{ privateKey: string; publicKey: string }> {
   const forge = await import('node-forge');
   
   // 生成 RSA 密钥对 (2048位)
   const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
   
-  // PKCS#8 格式私钥
-  const privateKeyPkcs8 = forge.asn1.toDer(forge.pki.privateKeyToAsn1(keypair.privateKey)).getBytes();
-  const privateKey = '-----BEGIN PRIVATE KEY-----\n' + 
-    forge.util.encode64(privateKeyPkcs8) + 
-    '\n-----END PRIVATE KEY-----';
+  // PKCS#8 格式私钥（纯 Base64 字符串）
+  const privateKeyAsn1 = forge.pki.privateKeyToAsn1(keypair.privateKey);
+  const privateKeyDer = forge.asn1.toDer(privateKeyAsn1).getBytes();
+  const privateKey = forge.util.encode64(privateKeyDer);
   
   // PKCS#1 格式公钥（纯 Base64，支付宝要求）
   const publicKeyHex = keypair.publicKey.n.toString(16);

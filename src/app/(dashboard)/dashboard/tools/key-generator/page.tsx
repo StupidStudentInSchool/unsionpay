@@ -32,11 +32,11 @@ export default function KeyGeneratorPage() {
   const publicKeyToPkcs1Base64 = (forge: typeof import('node-forge'), publicKey: any): string => {
     // 从公钥对象提取 n 和 e
     const publicKeyHex = publicKey.n.toString(16); // modulus
-    const exponent = publicKey.e; // public exponent (通常是 65537)
+    const exponent = publicKey.e.toString(); // public exponent (通常是 65537)
     
     // 将 hex 转换为 bytes
     const nBytes = hexToBytes(publicKeyHex);
-    const eBytes = intToBytes(exponent);
+    const eBytes = intToBytes(parseInt(exponent, 10));
     
     // 构建 PKCS#1 RSAPublicKey ASN.1 结构
     // RSAPublicKey ::= SEQUENCE { n INTEGER, e INTEGER }
@@ -52,6 +52,13 @@ export default function KeyGeneratorPage() {
     
     const der = forge.asn1.toDer(asn1Sequence).getBytes();
     // 返回纯 Base64 字符串（支付宝要求）
+    return forge.util.encode64(der);
+  };
+
+  // 生成 PKCS#8 格式私钥的纯 Base64 字符串
+  const privateKeyToPkcs8Base64 = (forge: typeof import('node-forge'), privateKey: any): string => {
+    const asn1 = forge.pki.privateKeyToAsn1(privateKey);
+    const der = forge.asn1.toDer(asn1).getBytes();
     return forge.util.encode64(der);
   };
 
@@ -89,11 +96,8 @@ export default function KeyGeneratorPage() {
       // 生成 RSA 密钥对 (2048位)
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
       
-      // PKCS#8 格式私钥（系统内部使用）
-      const privateKeyPkcs8 = forge.asn1.toDer(forge.pki.privateKeyToAsn1(keypair.privateKey)).getBytes();
-      const privateKey = '-----BEGIN PRIVATE KEY-----\n' + 
-        forge.util.encode64(privateKeyPkcs8) + 
-        '\n-----END PRIVATE KEY-----';
+      // PKCS#8 格式私钥（纯 Base64 字符串）
+      const privateKey = privateKeyToPkcs8Base64(forge, keypair.privateKey);
       
       // PKCS#8 格式公钥（通用格式）
       const publicKeyPkcs8 = forge.pki.publicKeyToPem(keypair.publicKey);
@@ -230,25 +234,16 @@ export default function KeyGeneratorPage() {
                   {/* 应用私钥 */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>应用私钥 (PKCS#8 格式)</Label>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => copyToClipboard(alipayKeys.privateKey, 'alipay-private')}
-                        >
-                          <Copy className="w-4 h-4 mr-1" />
-                          {copied === 'alipay-private' ? '已复制' : '复制'}
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => downloadFile(alipayKeys.privateKey, 'alipay_private_key.pem', 'application/x-pem-file')}
-                        >
-                          <Download className="w-4 h-4 mr-1" />
-                          下载
-                        </Button>
-                      </div>
+                      <Label>应用私钥</Label>
+                      <Button 
+                        variant="default" 
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700"
+                        onClick={() => copyToClipboard(alipayKeys.privateKey, 'alipay-private')}
+                      >
+                        <Copy className="w-4 h-4 mr-1" />
+                        {copied === 'alipay-private' ? '已复制' : '复制'}
+                      </Button>
                     </div>
                     <div className="p-4 bg-slate-900 rounded-lg">
                       <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">
