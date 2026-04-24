@@ -83,7 +83,7 @@ export const payOrder = anyPgTable(
     expire_time: timestamp("expire_time", { withTimezone: true, mode: 'string' }),
     status: varchar("status", { length: 20 }).default('pending'),
     attach: text("attach"),
-    client_ip: varchar("client_ip", { length: 45 }),
+    client_ip: varchar("client_ip", { length: 100 }),
     extra: text("extra"),
     paid_time: timestamp("paid_time", { withTimezone: true, mode: 'string' }),
     created_at: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
