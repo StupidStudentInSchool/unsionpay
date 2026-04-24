@@ -15,6 +15,28 @@ export type SignType = 'RSA' | 'RSA2' | 'HMAC-SHA256';
  */
 export class SignService {
   /**
+   * 将纯 Base64 密钥转换为 PEM 格式
+   */
+  private static toPemKey(key: string, type: 'PRIVATE' | 'PUBLIC' | 'RSA PUBLIC' | 'RSA PRIVATE'): string {
+    // 如果已经是 PEM 格式，直接返回
+    if (key.includes('-----BEGIN')) {
+      return key;
+    }
+    
+    // 移除可能的空白字符
+    const cleanKey = key.replace(/\\s/g, '');
+    
+    // 添加 PEM 头部和尾部，每 64 字符换行
+    const lines = ['-----BEGIN ' + type + '-----'];
+    for (let i = 0; i < cleanKey.length; i += 64) {
+      lines.push(cleanKey.substring(i, i + 64));
+    }
+    lines.push('-----END ' + type + '-----');
+    
+    return lines.join('\n');
+  }
+
+  /**
    * 支付宝签名
    */
   static alipaySign(
@@ -157,9 +179,12 @@ export class SignService {
     privateKey: string,
     signType: SignType
   ): string {
+    // 转换为 PEM 格式
+    const pemKey = this.toPemKey(privateKey, 'RSA PRIVATE');
+    
     const sign = crypto.createSign(signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1');
     sign.update(data);
-    return sign.sign(privateKey, 'base64');
+    return sign.sign(pemKey, 'base64');
   }
 
   /**
@@ -171,9 +196,12 @@ export class SignService {
     publicKey: string,
     signType: SignType
   ): boolean {
+    // 转换为 PEM 格式
+    const pemKey = this.toPemKey(publicKey, 'RSA PUBLIC');
+    
     const verify = crypto.createVerify(signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1');
     verify.update(data);
-    return verify.verify(publicKey, sign, 'base64');
+    return verify.verify(pemKey, sign, 'base64');
   }
 
   /**

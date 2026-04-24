@@ -62,6 +62,14 @@ export default function KeyGeneratorPage() {
     return forge.util.encode64(der);
   };
 
+  // 生成 PKCS#1 格式私钥（支付宝要求）
+  // PKCS#1 RSAPrivateKey = { version, modulus, publicExponent, privateExponent, prime1, prime2, exponent1, exponent2, coefficient }
+  const privateKeyToPkcs1Base64 = (forge: typeof import('node-forge'), privateKey: any): string => {
+    const asn1 = forge.pki.privateKeyToAsn1(privateKey);
+    const der = forge.asn1.toDer(asn1).getBytes();
+    return forge.util.encode64(der);
+  };
+
   // 将十六进制字符串转换为字节数组
   const hexToBytes = (hex: string): string => {
     let bytes = '';
