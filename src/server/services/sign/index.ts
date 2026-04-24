@@ -268,16 +268,17 @@ export async function verifyNotifySign(
   request: Request,
   config: {
     alipay_public_key?: string;
+    alipay_alipay_public_key?: string; // 支付宝公钥用于验签
     wechat_api_key?: string;
     wechat_public_cert?: string;
   }
 ): Promise<boolean> {
   if (channel === 'alipay') {
-    // 支付宝回调验签
+    // 支付宝回调验签 - 使用支付宝公钥
     const body = await request.text();
     const params = new URLSearchParams(body);
     const sign = params.get('sign');
-    if (!sign || !config.alipay_public_key) return false;
+    if (!sign || !config.alipay_alipay_public_key) return false;
 
     const signParams: Record<string, unknown> = {};
     params.forEach((value, key) => {
@@ -286,7 +287,7 @@ export async function verifyNotifySign(
       }
     });
 
-    return SignService.alipayVerify(signParams, sign, config.alipay_public_key);
+    return SignService.alipayVerify(signParams, sign, config.alipay_alipay_public_key);
   } else if (channel === 'wechat') {
     // 微信回调验签 (APIv2)
     const body = await request.text();

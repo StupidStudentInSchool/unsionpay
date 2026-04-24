@@ -151,9 +151,9 @@ export const AlipayAdapter = {
     const body = await request.text();
     const params = parseQueryString(body);
 
-    // 验证签名
+    // 验证签名 - 使用支付宝公钥验签
     const sign = params.sign as string;
-    if (!SignService.alipayVerify(params, sign, config.alipay_public_key!)) {
+    if (!SignService.alipayVerify(params, sign, config.alipay_alipay_public_key!)) {
       throw new Error('签名验证失败');
     }
 
@@ -188,11 +188,12 @@ export const AlipayAdapter = {
     const params = parseQueryString(body);
     const sign = params.sign as string;
 
-    if (!sign || !config.alipay_public_key) {
+    // 使用支付宝公钥验签
+    if (!sign || !config.alipay_alipay_public_key) {
       return false;
     }
 
-    return SignService.alipayVerify(params, sign, config.alipay_public_key);
+    return SignService.alipayVerify(params, sign, config.alipay_alipay_public_key);
   },
 
   /**
