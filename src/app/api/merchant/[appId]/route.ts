@@ -63,13 +63,17 @@ export async function PUT(
 
   try {
     const { appId } = await params;
+    console.log(`[${requestId}] PUT /api/merchant/${appId}`);
+    
     const merchant = await MerchantService.getByAppId(appId);
+    console.log(`[${requestId}] merchant:`, merchant);
 
     if (!merchant) {
       return errorResponse('商户不存在', 404);
     }
 
     const body = await request.json();
+    console.log(`[${requestId}] body:`, JSON.stringify(body));
 
     // 更新商户配置
     const success = await MerchantService.update(merchant.id, {
@@ -78,6 +82,7 @@ export async function PUT(
       alipay_app_id: body.alipay_app_id,
       alipay_private_key: body.alipay_private_key,
       alipay_public_key: body.alipay_public_key,
+      alipay_alipay_public_key: body.alipay_alipay_public_key,
       alipay_notify_url: body.alipay_notify_url,
       wechat_app_id: body.wechat_app_id,
       wechat_mch_id: body.wechat_mch_id,
@@ -91,6 +96,7 @@ export async function PUT(
       rate_limit: body.rate_limit,
       remark: body.remark,
     });
+    console.log(`[${requestId}] update success:`, success);
 
     if (!success) {
       return errorResponse('更新失败');
