@@ -49,17 +49,22 @@ interface MerchantFormProps {
   merchant?: {
     app_id: string;
     app_name: string;
-    channel: string;
-    profit_sharing_enabled: boolean;
-    alipay_app_id?: string;
-    alipay_private_key?: string;
-    alipay_public_key?: string;
-    alipay_alipay_public_key?: string; // 支付宝返回的公钥
-    wechat_app_id?: string;
-    wechat_mch_id?: string;
-    wechat_api_key?: string;
-    wechat_private_key?: string;
-    wechat_public_cert?: string;
+    channel: string | null;
+    default_channel?: string | null;
+    profit_sharing_enabled: number | boolean | null;
+    alipay_app_id?: string | null;
+    alipay_private_key?: string | null;
+    alipay_public_key?: string | null;
+    alipay_alipay_public_key?: string | null;
+    wechat_app_id?: string | null;
+    wechat_mch_id?: string | null;
+    wechat_api_key?: string | null;
+    wechat_private_key?: string | null;
+    wechat_public_cert?: string | null;
+    alipay_notify_url?: string | null;
+    wechat_notify_url?: string | null;
+    status?: string | null;
+    remark?: string | null;
   };
   onSuccess: () => void;
   onCancel: () => void;
@@ -81,19 +86,22 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
       ? {
           app_id: merchant.app_id,
           app_name: merchant.app_name,
-          channel: merchant.channel as 'alipay' | 'wechat' | 'both',
-          default_channel: 'alipay',
-          profit_sharing_enabled: merchant.profit_sharing_enabled,
+          channel: (merchant.channel as 'alipay' | 'wechat' | 'both') || 'both',
+          default_channel: (merchant.default_channel as 'alipay' | 'wechat') || 'alipay',
+          profit_sharing_enabled: Boolean(merchant.profit_sharing_enabled),
           alipay_app_id: merchant.alipay_app_id || '',
           alipay_private_key: merchant.alipay_private_key || '',
           alipay_public_key: merchant.alipay_public_key || '',
           alipay_alipay_public_key: merchant.alipay_alipay_public_key || '',
+          alipay_notify_url: merchant.alipay_notify_url || '',
           wechat_app_id: merchant.wechat_app_id || '',
           wechat_mch_id: merchant.wechat_mch_id || '',
           wechat_api_key: merchant.wechat_api_key || '',
           wechat_private_key: merchant.wechat_private_key || '',
           wechat_public_cert: merchant.wechat_public_cert || '',
-          status: 'active',
+          wechat_notify_url: merchant.wechat_notify_url || '',
+          status: (merchant.status as 'active' | 'inactive' | 'suspended') || 'active',
+          remark: merchant.remark || '',
         }
       : {
           channel: 'both',
@@ -103,12 +111,15 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
           alipay_private_key: '',
           alipay_public_key: '',
           alipay_alipay_public_key: '',
+          alipay_notify_url: '',
           wechat_app_id: '',
           wechat_mch_id: '',
           wechat_api_key: '',
           wechat_private_key: '',
           wechat_public_cert: '',
+          wechat_notify_url: '',
           status: 'active',
+          remark: '',
         },
   });
 
@@ -136,6 +147,7 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
         setError(result.message || '操作失败');
       }
     } catch (err) {
+      console.error('Submit error:', err);
       setError('网络错误，请重试');
     } finally {
       setLoading(false);
@@ -143,7 +155,9 @@ export function MerchantForm({ merchant, onSuccess, onCancel }: MerchantFormProp
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit, (errors) => {
+      console.error('Form validation errors:', errors);
+    })} className="space-y-6">
       {error && (
         <div className="p-3 text-sm text-red-600 bg-red-50 rounded-lg">
           {error}
