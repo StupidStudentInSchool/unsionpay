@@ -180,7 +180,15 @@ export class SignService {
     signType: SignType
   ): string {
     // 转换为 PEM 格式
-    const pemKey = this.toPemKey(privateKey, 'RSA PRIVATE');
+    let pemKey = this.toPemKey(privateKey, 'RSA PRIVATE');
+    
+    // 转换为 PKCS#8 格式以兼容 OpenSSL 3.0
+    try {
+      const keyObject = crypto.createPrivateKey(pemKey);
+      pemKey = keyObject.export({ type: 'pkcs8', format: 'pem' }) as string;
+    } catch {
+      // 如果转换失败，尝试直接使用原密钥
+    }
     
     const sign = crypto.createSign(signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1');
     sign.update(data);
@@ -197,7 +205,15 @@ export class SignService {
     signType: SignType
   ): boolean {
     // 转换为 PEM 格式
-    const pemKey = this.toPemKey(publicKey, 'RSA PUBLIC');
+    let pemKey = this.toPemKey(publicKey, 'RSA PUBLIC');
+    
+    // 转换为 X.509 格式以兼容 OpenSSL 3.0
+    try {
+      const keyObject = crypto.createPublicKey(pemKey);
+      pemKey = keyObject.export({ type: 'spki', format: 'pem' }) as string;
+    } catch {
+      // 如果转换失败，尝试直接使用原密钥
+    }
     
     const verify = crypto.createVerify(signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1');
     verify.update(data);
