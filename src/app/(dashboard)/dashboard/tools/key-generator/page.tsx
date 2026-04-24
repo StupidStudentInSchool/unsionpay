@@ -22,7 +22,7 @@ export default function KeyGeneratorPage() {
   // 复制状态
   const [copied, setCopied] = useState<string | null>(null);
 
-  // 生成支付宝 RSA2 密钥对
+  // 生成支付宝 RSA2 密钥对 (PKCS#8 格式)
   const generateAlipayKeys = async () => {
     try {
       const forge = await import('node-forge');
@@ -30,8 +30,9 @@ export default function KeyGeneratorPage() {
       // 生成 RSA 密钥对 (2048位)
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
       
-      // PEM 格式
-      const privateKey = forge.pki.privateKeyToPem(keypair.privateKey);
+      // PKCS#8 格式私钥（支付宝要求）
+      const privateKey = forge.pki.privateKeyToPkcs8Pem(keypair.privateKey);
+      // PKCS#8 格式公钥
       const publicKey = forge.pki.publicKeyToPem(keypair.publicKey);
       
       setAlipayKeys({ privateKey, publicKey });
@@ -51,7 +52,7 @@ export default function KeyGeneratorPage() {
     setWechatApiKey(key);
   };
 
-  // 生成微信 RSA 密钥对
+  // 生成微信 RSA 密钥对 (PKCS#8 格式)
   const generateWechatRsaKeys = async () => {
     try {
       const forge = await import('node-forge');
@@ -59,8 +60,9 @@ export default function KeyGeneratorPage() {
       // 生成 RSA 密钥对 (2048位)
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
       
-      // PEM 格式
-      const privateKey = forge.pki.privateKeyToPem(keypair.privateKey);
+      // PKCS#8 格式私钥（微信支付 APIv3 要求）
+      const privateKey = forge.pki.privateKeyToPkcs8Pem(keypair.privateKey);
+      // PKCS#8 格式公钥
       const publicKey = forge.pki.publicKeyToPem(keypair.publicKey);
       
       setWechatRsaKeys({ privateKey, publicKey });
@@ -218,9 +220,9 @@ export default function KeyGeneratorPage() {
                   {/* 使用说明 */}
                   <Card className="bg-amber-50 border-amber-200">
                     <CardContent className="p-4">
-                      <p className="font-medium text-amber-800">使用说明</p>
+                      <p className="font-medium text-amber-800">使用说明（PKCS#8 格式）</p>
                       <ol className="text-sm text-amber-700 mt-2 space-y-1 list-decimal list-inside">
-                        <li>将「应用私钥」配置到商户设置中</li>
+                        <li>将「应用私钥」直接配置到商户设置中（PKCS#8 格式）</li>
                         <li>将「应用公钥」填写到支付宝开放平台后台（密钥设置页面）</li>
                         <li>支付宝会生成「支付宝公钥」，需要配置到商户设置中用于验签</li>
                       </ol>
@@ -371,9 +373,9 @@ export default function KeyGeneratorPage() {
 
                   <Card className="bg-amber-50 border-amber-200">
                     <CardContent className="p-4">
-                      <p className="font-medium text-amber-800">使用说明</p>
+                      <p className="font-medium text-amber-800">使用说明（PKCS#8 格式）</p>
                       <ol className="text-sm text-amber-700 mt-2 space-y-1 list-decimal list-inside">
-                        <li>将「商户私钥」配置到商户设置中</li>
+                        <li>将「商户私钥」直接配置到商户设置中（PKCS#8 格式）</li>
                         <li>将「商户公钥」上传到微信支付商户平台（API 安全 → RSA加密 → 手动上传）</li>
                         <li>微信支付会提供「微信支付平台证书」，用于解密回调</li>
                       </ol>
