@@ -16,7 +16,7 @@ export class MerchantService {
   static async getByAppId(appId: string): Promise<MerchantConfig | null> {
     const sql = `
       SELECT * FROM merchant_config 
-      WHERE app_id = ? AND status = 'active'
+      WHERE app_id = ? AND (status = 'active' OR status IS NULL)
     `;
     const rows = await db.query<MerchantRow>(sql, [appId]);
     return (rows[0] as unknown as MerchantConfig) || null;
@@ -26,7 +26,7 @@ export class MerchantService {
    * 根据 ID 获取商户配置
    */
   static async getById(id: number): Promise<MerchantConfig | null> {
-    const sql = `SELECT * FROM merchant_config WHERE id = ?`;
+    const sql = `SELECT * FROM merchant_config WHERE id = ? AND (status = 'active' OR status IS NULL)`;
     const rows = await db.query<MerchantRow>(sql, [id]);
     return (rows[0] as unknown as MerchantConfig) || null;
   }
