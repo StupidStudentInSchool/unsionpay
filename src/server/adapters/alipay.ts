@@ -54,7 +54,6 @@ export const AlipayAdapter = {
 
     // 构建请求参数
     const params: Record<string, unknown> = {
-      app_id: config.alipay_app_id,
       method: 'alipay.trade.page.pay',
       format: 'JSON',
       return_url: return_url,
@@ -69,24 +68,43 @@ export const AlipayAdapter = {
     // 构建支付链接
     let payUrl: string;
     let tradeNo: string | undefined;
+    let qrCode: string | undefined;
 
-    // 尝试签名，失败时使用沙箱模式
-    try {
-      const sign = SignService.alipaySign(params, config.alipay_private_key!, 'RSA2');
-      params.sign = sign;
-      payUrl = `https://openapi.alipay.com/gateway.do?${buildQueryString(params)}`;
-    } catch {
-      // 签名失败时使用沙箱模式（测试环境）
-      console.log('[Alipay] Sign failed, using sandbox mode');
+    // 判断是否使用沙箱模式
+    const useSandbox = !config.alipay_private_key || !config.alipay_app_id;
+
+    // 沙箱模式使用固定的沙箱 app_id
+    if (useSandbox) {
+      console.log('[Alipay] Sandbox mode: using sandbox app_id');
+      params.app_id = '2021001234567890';
+      // 沙箱模式不签名，直接使用网关
       payUrl = `https://openapi-sandbox.dl.alipaydev.com/gateway.do?${buildQueryString(params)}`;
-      tradeNo = `ALIPAY${Date.now()}`;
+      tradeNo = `SANDBOX${Date.now()}`;
+    } else {
+      // 生产模式
+      if (!config.alipay_app_id || !config.alipay_private_key) {
+        throw new Error('缺少支付宝配置');
+      }
+      params.app_id = config.alipay_app_id;
+      try {
+        const sign = SignService.alipaySign(params, config.alipay_private_key, 'RSA2');
+        params.sign = sign;
+        payUrl = `https://openapi.alipay.com/gateway.do?${buildQueryString(params)}`;
+      } catch (err) {
+        console.error('[Alipay] Sign failed:', err);
+        throw err;
+      }
     }
 
     // 根据交易类型返回不同的参数
     switch (trade_type) {
       case 'native':
+        // 沙箱模式使用固定格式的二维码
+        if (useSandbox) {
+          qrCode = `https://openapi-sandbox.dl.alipaydev.com/gateway.do?app_id=2021001234567890&method=alipay.trade.page.pay&format=JSON&charset=UTF-8&sign_type=RSA2&timestamp=${encodeURIComponent(params.timestamp as string)}&version=1.0&notify_url=&biz_content=${encodeURIComponent(params.biz_content as string)}`;
+        }
         return {
-          qr_code: payUrl,
+          qr_code: qrCode || payUrl,
           trade_no: tradeNo,
         };
       case 'app':
@@ -109,7 +127,7 @@ export const AlipayAdapter = {
       case 'jsapi':
         return {
           jsapi_params: {
-            app_id: config.alipay_app_id,
+            app_id: params.app_id,
             method: 'alipay.trade.wap.pay',
             biz_content: params.biz_content,
           },
