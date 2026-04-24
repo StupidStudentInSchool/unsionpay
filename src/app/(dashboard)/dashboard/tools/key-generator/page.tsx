@@ -11,7 +11,11 @@ import { Badge } from '@/components/ui/badge';
 
 export default function KeyGeneratorPage() {
   // 支付宝 RSA2 密钥
-  const [alipayKeys, setAlipayKeys] = useState({ privateKey: '', publicKey: '' });
+  const [alipayKeys, setAlipayKeys] = useState({ 
+    privateKey: '', 
+    publicKeyPkcs8: '',
+    publicKeyPkcs1: ''  // 支付宝要求的格式
+  });
   
   // 微信 API 密钥
   const [wechatApiKey, setWechatApiKey] = useState('');
@@ -22,7 +26,15 @@ export default function KeyGeneratorPage() {
   // 复制状态
   const [copied, setCopied] = useState<string | null>(null);
 
-  // 生成支付宝 RSA2 密钥对 (PKCS#8 格式)
+  // 生成 PKCS#1 格式公钥（支付宝要求）
+  const publicKeyToPkcs1 = (forge: typeof import('node-forge'), publicKey: any): string => {
+    const der = forge.asn1.toDer(forge.pki.publicKeyToAsn1(publicKey)).getBytes();
+    return '-----BEGIN RSA PUBLIC KEY-----\n' + 
+      forge.util.encode64(der) + 
+      '\n-----END RSA PUBLIC KEY-----';
+  };
+
+  // 生成支付宝 RSA2 密钥对
   const generateAlipayKeys = async () => {
     try {
       const forge = await import('node-forge');
@@ -30,16 +42,19 @@ export default function KeyGeneratorPage() {
       // 生成 RSA 密钥对 (2048位)
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
       
-      // PKCS#8 格式私钥（支付宝要求）
+      // PKCS#8 格式私钥（系统内部使用）
       const privateKeyPkcs8 = forge.asn1.toDer(forge.pki.privateKeyToAsn1(keypair.privateKey)).getBytes();
       const privateKey = '-----BEGIN PRIVATE KEY-----\n' + 
         forge.util.encode64(privateKeyPkcs8) + 
         '\n-----END PRIVATE KEY-----';
       
-      // PKCS#8 公钥
-      const publicKey = forge.pki.publicKeyToPem(keypair.publicKey);
+      // PKCS#8 格式公钥（通用格式）
+      const publicKeyPkcs8 = forge.pki.publicKeyToPem(keypair.publicKey);
       
-      setAlipayKeys({ privateKey, publicKey });
+      // PKCS#1 格式公钥（支付宝要求）
+      const publicKeyPkcs1 = publicKeyToPkcs1(forge, keypair.publicKey);
+      
+      setAlipayKeys({ privateKey, publicKeyPkcs8, publicKeyPkcs1 });
     } catch (error) {
       console.error('Failed to generate Alipay keys:', error);
       alert('生成失败，请重试');
@@ -168,7 +183,7 @@ export default function KeyGeneratorPage() {
                   {/* 应用私钥 */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>应用私钥 (APP Private Key)</Label>
+                      <Label>应用私钥 (PKCS#8 格式)</Label>
                       <div className="flex gap-2">
                         <Button 
                           variant="outline" 
@@ -193,17 +208,22 @@ export default function KeyGeneratorPage() {
                         {alipayKeys.privateKey}
                       </pre>
                     </div>
+                    <p className="text-xs text-slate-500">用于：配置到商户设置中，服务端调用支付宝 API 时签名使用</p>
                   </div>
 
-                  {/* 应用公钥 */}
+                  {/* 应用公钥 - 支付宝要求的格式 */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>应用公钥 (APP Public Key)</Label>
+                      <div className="flex items-center gap-2">
+                        <Label>应用公钥 (上传到支付宝后台)</Label>
+                        <Badge className="bg-green-100 text-green-700 border-green-300">PKCS#1 格式</Badge>
+                      </div>
                       <div className="flex gap-2">
                         <Button 
-                          variant="outline" 
+                          variant="default" 
                           size="sm"
-                          onClick={() => copyToClipboard(alipayKeys.publicKey, 'alipay-public')}
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => copyToClipboard(alipayKeys.publicKeyPkcs1, 'alipay-public')}
                         >
                           <Copy className="w-4 h-4 mr-1" />
                           {copied === 'alipay-public' ? '已复制' : '复制'}
@@ -211,7 +231,7 @@ export default function KeyGeneratorPage() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => downloadFile(alipayKeys.publicKey, 'alipay_public_key.pem', 'application/x-pem-file')}
+                          onClick={() => downloadFile(alipayKeys.publicKeyPkcs1, 'alipay_public_key.pem', 'application/x-pem-file')}
                         >
                           <Download className="w-4 h-4 mr-1" />
                           下载
@@ -220,20 +240,53 @@ export default function KeyGeneratorPage() {
                     </div>
                     <div className="p-4 bg-slate-900 rounded-lg">
                       <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">
-                        {alipayKeys.publicKey}
+                        {alipayKeys.publicKeyPkcs1}
                       </pre>
                     </div>
+                    <p className="text-xs text-slate-500">用于：复制此内容到支付宝开放平台 → 应用信息 → 密钥设置</p>
+                  </div>
+
+                  {/* PKCS#8 格式公钥 - 仅供调试 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Label>应用公钥 (PKCS#8 格式)</Label>
+                        <Badge variant="outline">调试用</Badge>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => copyToClipboard(alipayKeys.publicKeyPkcs8, 'alipay-public-pkcs8')}
+                        >
+                          <Copy className="w-4 h-4 mr-1" />
+                          {copied === 'alipay-public-pkcs8' ? '已复制' : '复制'}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-800 rounded-lg">
+                      <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">
+                        {alipayKeys.publicKeyPkcs8}
+                      </pre>
+                    </div>
+                    <p className="text-xs text-slate-500">说明：PKCS#8 格式公钥，部分第三方系统可能需要此格式</p>
                   </div>
 
                   {/* 使用说明 */}
-                  <Card className="bg-amber-50 border-amber-200">
-                    <CardContent className="p-4">
-                      <p className="font-medium text-amber-800">使用说明（PKCS#8 格式）</p>
-                      <ol className="text-sm text-amber-700 mt-2 space-y-1 list-decimal list-inside">
-                        <li>将「应用私钥」直接配置到商户设置中（PKCS#8 格式）</li>
-                        <li>将「应用公钥」填写到支付宝开放平台后台（密钥设置页面）</li>
-                        <li>支付宝会生成「支付宝公钥」，需要配置到商户设置中用于验签</li>
+                  <Card className="bg-green-50 border-green-200">
+                    <CardContent className="p-4 space-y-2">
+                      <p className="font-medium text-green-800">配置步骤</p>
+                      <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
+                        <li>点击「生成密钥对」获取新的密钥</li>
+                        <li>复制「应用公钥 (上传到支付宝后台)」的内容</li>
+                        <li>登录支付宝开放平台 → 我的应用 → 密钥设置</li>
+                        <li>选择「RSA2(SHA256)」签名方式，粘贴公钥内容</li>
+                        <li>支付宝会返回「支付宝公钥」，需配置到商户设置中</li>
+                        <li>将「应用私钥」配置到本系统的商户设置中</li>
                       </ol>
+                      <p className="text-xs text-green-600 mt-2">
+                        注意：复制时请确保包含完整的 <code className="bg-green-100 px-1 rounded">-----BEGIN RSA PUBLIC KEY-----</code> 和 <code className="bg-green-100 px-1 rounded">-----END RSA PUBLIC KEY-----</code> 标签
+                      </p>
                     </CardContent>
                   </Card>
                 </>
@@ -246,9 +299,12 @@ export default function KeyGeneratorPage() {
         <TabsContent value="wechat-api">
           <Card>
             <CardHeader>
-              <CardTitle>微信 API 密钥 (APIv2)</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                微信支付 API 密钥
+                <Badge variant="outline">APIv2</Badge>
+              </CardTitle>
               <CardDescription>
-                用于微信支付 APIv2 签名的 32 位随机字符串
+                微信支付 APIv2 使用的 32 位密钥字符串
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -263,20 +319,18 @@ export default function KeyGeneratorPage() {
                 <>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>微信 API 密钥</Label>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => copyToClipboard(wechatApiKey, 'wechat-apikey')}
-                        >
-                          <Copy className="w-4 h-4 mr-1" />
-                          {copied === 'wechat-apikey' ? '已复制' : '复制'}
-                        </Button>
-                      </div>
+                      <Label>API 密钥 (32位)</Label>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => copyToClipboard(wechatApiKey, 'wechat-api')}
+                      >
+                        <Copy className="w-4 h-4 mr-1" />
+                        {copied === 'wechat-api' ? '已复制' : '复制'}
+                      </Button>
                     </div>
                     <div className="p-4 bg-slate-900 rounded-lg">
-                      <pre className="text-green-400 text-lg font-mono tracking-widest">
+                      <pre className="text-green-400 text-lg font-mono tracking-wider">
                         {wechatApiKey}
                       </pre>
                     </div>
@@ -286,8 +340,10 @@ export default function KeyGeneratorPage() {
                     <CardContent className="p-4">
                       <p className="font-medium text-amber-800">使用说明</p>
                       <ol className="text-sm text-amber-700 mt-2 space-y-1 list-decimal list-inside">
-                        <li>将生成的 API 密钥配置到商户设置中</li>
-                        <li>APIv2 已逐步废弃，新项目建议使用 APIv3 + RSA 密钥</li>
+                        <li>复制生成的 API 密钥</li>
+                        <li>登录微信支付商户平台 → 账户中心 → API 安全</li>
+                        <li>设置 API 密钥（32位，必须与这里生成的保持一致）</li>
+                        <li>将相同密钥配置到本系统的商户设置中</li>
                       </ol>
                     </CardContent>
                   </Card>
@@ -302,18 +358,18 @@ export default function KeyGeneratorPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                微信 APIv3 RSA 密钥对
-                <Badge>推荐</Badge>
+                微信支付 RSA 密钥对
+                <Badge variant="outline">APIv3</Badge>
               </CardTitle>
               <CardDescription>
-                用于微信支付 APIv3 的 RSA256 签名密钥对（2048位）
+                微信支付 APIv3 使用的 RSA 签名密钥对（2048位）
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-4">
                 <Button onClick={generateWechatRsaKeys} className="flex items-center gap-2">
                   <RefreshCw className="w-4 h-4" />
-                  生成 RSA 密钥对
+                  生成密钥对
                 </Button>
               </div>
 
@@ -322,15 +378,15 @@ export default function KeyGeneratorPage() {
                   {/* 商户私钥 */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>商户私钥 (Merchant Private Key)</Label>
+                      <Label>商户私钥 (PKCS#8 格式)</Label>
                       <div className="flex gap-2">
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => copyToClipboard(wechatRsaKeys.privateKey, 'wechat-private')}
+                          onClick={() => copyToClipboard(wechatRsaKeys.privateKey, 'wechat-rsa-private')}
                         >
                           <Copy className="w-4 h-4 mr-1" />
-                          {copied === 'wechat-private' ? '已复制' : '复制'}
+                          {copied === 'wechat-rsa-private' ? '已复制' : '复制'}
                         </Button>
                         <Button 
                           variant="outline" 
@@ -352,15 +408,15 @@ export default function KeyGeneratorPage() {
                   {/* 商户公钥 */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>商户公钥 (Merchant Public Key)</Label>
+                      <Label>商户公钥 (PKCS#8 格式)</Label>
                       <div className="flex gap-2">
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => copyToClipboard(wechatRsaKeys.publicKey, 'wechat-public')}
+                          onClick={() => copyToClipboard(wechatRsaKeys.publicKey, 'wechat-rsa-public')}
                         >
                           <Copy className="w-4 h-4 mr-1" />
-                          {copied === 'wechat-public' ? '已复制' : '复制'}
+                          {copied === 'wechat-rsa-public' ? '已复制' : '复制'}
                         </Button>
                         <Button 
                           variant="outline" 
@@ -381,11 +437,12 @@ export default function KeyGeneratorPage() {
 
                   <Card className="bg-amber-50 border-amber-200">
                     <CardContent className="p-4">
-                      <p className="font-medium text-amber-800">使用说明（PKCS#8 格式）</p>
+                      <p className="font-medium text-amber-800">使用说明</p>
                       <ol className="text-sm text-amber-700 mt-2 space-y-1 list-decimal list-inside">
-                        <li>将「商户私钥」直接配置到商户设置中（PKCS#8 格式）</li>
-                        <li>将「商户公钥」上传到微信支付商户平台（API 安全 → RSA加密 → 手动上传）</li>
-                        <li>微信支付会提供「微信支付平台证书」，用于解密回调</li>
+                        <li>将「商户私钥」配置到本系统的商户设置中</li>
+                        <li>登录微信支付商户平台 → 账户中心 → API 安全</li>
+                        <li>申请设置商户公钥（上传此页面显示的公钥内容）</li>
+                        <li>微信审核通过后，会返回「微信平台公钥」</li>
                       </ol>
                     </CardContent>
                   </Card>
@@ -396,26 +453,22 @@ export default function KeyGeneratorPage() {
         </TabsContent>
       </Tabs>
 
-      {/* 密钥配置说明 */}
+      {/* 格式说明 */}
       <Card>
         <CardHeader>
-          <CardTitle>密钥配置位置</CardTitle>
+          <CardTitle className="text-base">密钥格式说明</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="p-4 border rounded-lg">
-              <p className="font-medium mb-2">支付宝配置</p>
-              <ul className="text-sm text-slate-600 space-y-1">
-                <li>• 应用私钥 → 商户设置中的 alipay_private_key</li>
-                <li>• 支付宝公钥 → 商户设置中的 alipay_public_key</li>
-              </ul>
+          <div className="grid md:grid-cols-2 gap-4 text-sm">
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="font-medium text-slate-700">PKCS#1 格式</p>
+              <p className="text-slate-500 mt-1">-----BEGIN RSA PUBLIC KEY-----</p>
+              <p className="text-slate-500">用于：支付宝上传公钥</p>
             </div>
-            <div className="p-4 border rounded-lg">
-              <p className="font-medium mb-2">微信支付配置</p>
-              <ul className="text-sm text-slate-600 space-y-1">
-                <li>• APIv2 密钥 → 商户设置中的 wechat_api_key</li>
-                <li>• APIv3 私钥 → 商户设置中的 wechat_private_key</li>
-              </ul>
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="font-medium text-slate-700">PKCS#8 格式</p>
+              <p className="text-slate-500 mt-1">-----BEGIN PUBLIC KEY-----</p>
+              <p className="text-slate-500">用于：通用场景、部分第三方系统</p>
             </div>
           </div>
         </CardContent>
