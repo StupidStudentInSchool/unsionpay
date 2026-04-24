@@ -56,6 +56,17 @@ export function initializeDatabase() {
     )
   `);
 
+  // 添加缺失的列（如果表已存在但没有这些列）
+  const addColumnIfNotExists = (table: string, column: string, type: string) => {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    } catch (e: unknown) {
+      // 忽略错误，列可能已存在
+    }
+  };
+  addColumnIfNotExists('merchant_config', 'alipay_alipay_public_key', 'TEXT');
+  addColumnIfNotExists('merchant_config', 'wechat_public_cert', 'TEXT');
+
   // 分账方配置表
   db.exec(`
     CREATE TABLE IF NOT EXISTS profit_sharing_receiver (
