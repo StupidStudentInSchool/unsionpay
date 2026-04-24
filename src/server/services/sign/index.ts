@@ -96,6 +96,14 @@ export class SignService {
     publicKey: string,
     signType: SignType = 'RSA2'
   ): boolean {
+    // 调试日志
+    console.log('[Alipay] alipayVerifyRaw:', {
+      signStringLength: signString.length,
+      signLength: sign.length,
+      publicKeyLength: publicKey.length,
+      publicKeyPreview: publicKey.substring(0, 50) + '...',
+    });
+    
     return this.rsaVerify(signString, sign, publicKey, signType);
   }
 
@@ -220,22 +228,46 @@ export class SignService {
     publicKey: string,
     signType: SignType
   ): boolean {
+    // 调试日志
+    console.log('[RSA] rsaVerify start:', {
+      dataLength: data.length,
+      signLength: sign.length,
+      signType,
+      publicKeyStart: publicKey.substring(0, 40),
+    });
+    
     // 转换为 PEM 格式
     let pemKey = this.toPemKey(publicKey, 'PUBLIC KEY');
+    
+    console.log('[RSA] after toPemKey:', {
+      pemKeyStart: pemKey.substring(0, 50),
+    });
     
     // 如果不是 X.509 格式，尝试转换
     if (!pemKey.includes('-----BEGIN PUBLIC KEY-----')) {
       try {
         const keyObject = crypto.createPublicKey(pemKey);
         pemKey = keyObject.export({ type: 'spki', format: 'pem' }) as string;
-      } catch {
+        console.log('[RSA] converted to X.509:', {
+          pemKeyStart: pemKey.substring(0, 50),
+        });
+      } catch (e) {
+        console.error('[RSA] key conversion failed:', e);
         // 如果转换失败，使用原始格式
       }
     }
     
     // 使用 crypto.verify 代替 createVerify，更兼容 OpenSSL 3.0
     const algorithm = signType === 'RSA2' ? 'RSA-SHA256' : 'RSA-SHA1';
-    return crypto.verify(algorithm, Buffer.from(data, 'utf8'), pemKey, Buffer.from(sign, 'base64'));
+    
+    try {
+      const result = crypto.verify(algorithm, Buffer.from(data, 'utf8'), pemKey, Buffer.from(sign, 'base64'));
+      console.log('[RSA] verify result:', result);
+      return result;
+    } catch (e) {
+      console.error('[RSA] verify error:', e);
+      return false;
+    }
   }
 
   /**

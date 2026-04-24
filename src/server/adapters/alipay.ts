@@ -154,7 +154,8 @@ export const AlipayAdapter = {
     
     for (const pair of pairs) {
       if (pair.startsWith('sign=')) {
-        sign = decodeURIComponent(pair.substring(5));
+        // 保留原始的 sign 值（URL 编码）
+        sign = pair.substring(5);
       } else if (!pair.startsWith('sign_type=')) {
         filteredPairs.push(pair);
       }
@@ -167,8 +168,18 @@ export const AlipayAdapter = {
       return keyA.localeCompare(keyB);
     });
     
+    const signString = filteredPairs.join('&');
+    
+    // 调试日志
+    console.log('[Alipay] buildSignParams:', {
+      bodyLength: body.length,
+      sign,
+      signStringLength: signString.length,
+      signStringPreview: signString.substring(0, 200) + (signString.length > 200 ? '...' : ''),
+    });
+    
     return {
-      signString: filteredPairs.join('&'),
+      signString,
       sign,
     };
   },
