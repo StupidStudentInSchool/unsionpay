@@ -1,29 +1,22 @@
 // =====================================================
-// 统一支付系统 - 退款服务
+// 统一支付系统 - 退款服务 (Supabase)
 // =====================================================
 
-import db from '../../db';
-import { RefundRow } from '../../db';
+import { getSupabaseClient } from '@/storage/database/supabase-client';
 import { RefundOrder, UnifiedRefundRequest, UnifiedRefundResponse, RefundStatus } from '../../types';
 import { PayService } from '../pay';
 import { MerchantService } from '../merchant';
 import { PayException, PayErrorCode } from '../../types';
 import { generateRefundNo, yuanToFen } from '../../utils';
 
-// SQLite 日期格式化辅助函数
-function formatDateField(date: unknown): string {
-  if (!date) return '';
-  if (typeof date === 'string') return date.split('T')[0];
-  if (typeof date === 'object' && 'toISOString' in date) {
-    return (date as Date).toISOString().split('T')[0];
-  }
-  return String(date);
-}
-
 /**
  * 退款服务
  */
 export class RefundService {
+  private static getClient() {
+    return getSupabaseClient();
+  }
+
   /**
    * 统一退款
    */
@@ -175,22 +168,28 @@ export class RefundService {
    * 创建退款记录
    */
   private static async createRefund(data: Partial<RefundOrder>): Promise<number> {
-    const fields = [
-      'refund_no', 'order_id', 'order_no', 'merchant_refund_no',
-      'channel', 'channel_refund_no', 'total_amount', 'refund_amount',
-      'refunded_amount', 'reason', 'remark', 'status', 'fail_reason'
-    ];
+    const client = this.getClient();
+    
+    const insertData: Record<string, unknown> = {
+      refund_no: data.refund_no,
+      order_id: data.order_id,
+      order_no: data.order_no,
+      merchant_refund_no: data.merchant_refund_no,
+      channel: data.channel,
+      total_amount: data.total_amount,
+      refund_amount: data.refund_amount,
+      refunded_amount: 0,
+      reason: data.reason,
+      status: data.status || 'pending',
+    };
 
-    const values = fields.map(field => {
-      const value = data[field as keyof RefundOrder];
-      if (field === 'refunded_amount') return value ?? 0;
-      return value ?? null;
-    });
-
-    const placeholders = fields.map(() => '?').join(', ');
-    const sql = `INSERT INTO refund_order (${fields.join(', ')}) VALUES (${placeholders})`;
-    const result = await db.execute(sql, values);
-    return result.lastInsertRowid;
+    const { data: result, error } = await client
+      .from('refund_order')
+      .insert(insertData)
+      .select('id')
+      .single();
+    if (error) throw new Error(`创建退款记录失败: ${error.message}`);
+    return result.id;
   }
 
   /**
@@ -200,22 +199,21 @@ export class RefundService {
     refundNo: string,
     data: Partial<RefundOrder>
   ): Promise<boolean> {
-    const updates: string[] = [];
-    const values: unknown[] = [];
-
-    for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) {
-        updates.push(`${key} = ?`);
-        values.push(value);
-      }
+    const client = this.getClient();
+    
+    const updateData: Record<string, unknown> = { ...data, updated_at: new Date().toISOString() };
+    if (data.refund_time) {
+      updateData.refund_time = data.refund_time instanceof Date 
+        ? data.refund_time.toISOString() 
+        : data.refund_time;
     }
 
-    if (updates.length === 0) return false;
-
-    values.push(refundNo);
-    const sql = `UPDATE refund_order SET ${updates.join(', ')}, updated_at = NOW() WHERE refund_no = ?`;
-    const result = await db.execute(sql, values);
-    return result.changes > 0;
+    const { error } = await client
+      .from('refund_order')
+      .update(updateData)
+      .eq('refund_no', refundNo);
+    if (error) throw new Error(`更新退款记录失败: ${error.message}`);
+    return true;
   }
 
   /**
@@ -225,26 +223,39 @@ export class RefundService {
     appId: string,
     merchantRefundNo: string
   ): Promise<RefundOrder | null> {
-    const sql = `
-      SELECT r.* FROM refund_order r
-      JOIN pay_order p ON r.order_id = p.id
-      WHERE p.app_id = ? AND r.merchant_refund_no = ?
-    `;
-    const rows = await db.query<RefundRow>(sql, [appId, merchantRefundNo]);
-    return (rows[0] as unknown as RefundOrder) || null;
+    const client = this.getClient();
+    
+    // 先获取订单的 app_id
+    const { data, error } = await client
+      .from('refund_order')
+      .select('*')
+      .eq('merchant_refund_no', merchantRefundNo)
+      .maybeSingle();
+    if (error && error.code !== 'PGRST116') throw new Error(`查询退款记录失败: ${error.message}`);
+    
+    if (!data) return null;
+    
+    // 验证订单属于该商户
+    const order = await PayService.getByOrderNo(data.order_no);
+    if (!order || order.app_id !== appId) {
+      return null;
+    }
+    
+    return data as RefundOrder;
   }
 
   /**
    * 获取已退款金额
    */
   private static async getRefundedAmount(orderId: number): Promise<number> {
-    const sql = `
-      SELECT COALESCE(SUM(refund_amount), 0) as total
-      FROM refund_order
-      WHERE order_id = ? AND status IN ('success', 'processing')
-    `;
-    const rows = await db.query<{ total: number }>(sql, [orderId]);
-    return rows[0]?.total || 0;
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('refund_order')
+      .select('refund_amount')
+      .eq('order_id', orderId)
+      .in('status', ['success', 'processing']);
+    if (error) throw new Error(`查询已退款金额失败: ${error.message}`);
+    return (data || []).reduce((sum, r) => sum + (r.refund_amount || 0), 0);
   }
 
   /**
@@ -256,42 +267,50 @@ export class RefundService {
     page: number = 1,
     pageSize: number = 20
   ): Promise<{ list: RefundOrder[]; total: number }> {
-    let sql = `
-      SELECT r.* FROM refund_order r
-      JOIN pay_order p ON r.order_id = p.id
-      WHERE 1=1
-    `;
-    let countSql = `
-      SELECT COUNT(*) as total FROM refund_order r
-      JOIN pay_order p ON r.order_id = p.id
-      WHERE 1=1
-    `;
-    const params: unknown[] = [];
-
+    const client = this.getClient();
+    
+    // 如果有 appId，先获取该商户的订单号列表
+    let orderNos: string[] = [];
     if (appId) {
-      sql += ' AND p.app_id = ?';
-      countSql += ' AND p.app_id = ?';
-      params.push(appId);
+      const { data: orders, error: orderError } = await client
+        .from('pay_order')
+        .select('order_no')
+        .eq('app_id', appId);
+      if (orderError) throw new Error(`查询订单失败: ${orderError.message}`);
+      orderNos = (orders || []).map(o => o.order_no);
     }
 
+    // 构建查询
+    let query = client
+      .from('refund_order')
+      .select('*', { count: 'exact', head: true });
+
+    if (orderNos.length > 0) {
+      query = query.in('order_no', orderNos);
+    }
     if (status) {
-      sql += ' AND r.status = ?';
-      countSql += ' AND r.status = ?';
-      params.push(status);
+      query = query.eq('status', status);
     }
 
-    sql += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
-    const offset = (page - 1) * pageSize;
-    params.push(pageSize, offset);
+    const { count, error } = await query;
+    if (error) throw new Error(`查询退款总数失败: ${error.message}`);
 
-    const [list, countResult] = await Promise.all([
-      db.query<RefundRow>(sql, params),
-      db.query<{ total: number }>(countSql, appId || status ? params.slice(0, -2) : [])
-    ]);
+    const { data, error: listError } = await client
+      .from('refund_order')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1);
+    if (listError) throw new Error(`查询退款列表失败: ${listError.message}`);
+
+    // 过滤出属于该商户的退款
+    let filteredData = data || [];
+    if (appId && orderNos.length > 0) {
+      filteredData = filteredData.filter(r => orderNos.includes(r.order_no));
+    }
 
     return {
-      list: list as unknown as RefundOrder[],
-      total: countResult[0]?.total || 0
+      list: filteredData as RefundOrder[],
+      total: count || 0
     };
   }
 }
@@ -313,76 +332,95 @@ export interface RefundListResult {
   list: Array<{
     refund_no: string;
     order_no: string;
-    merchant_order_no: string;
+    merchant_refund_no: string;
     channel: string;
     total_amount: number;
     refund_amount: number;
-    status: string;
+    refunded_amount: number;
     reason?: string;
-    created_at: string;
+    status: string;
+    fail_reason?: string;
     refund_time?: string;
+    created_at: string;
   }>;
   total: number;
 }
 
 export async function getRefundList(params: RefundListParams): Promise<RefundListResult> {
   const { page, pageSize, status, appId } = params;
+  const client = getSupabaseClient();
 
-  let sql = `
-    SELECT r.refund_no, r.order_no, p.merchant_order_no, r.channel,
-           r.total_amount, r.refund_amount, r.status, r.reason,
-           r.created_at, r.refund_time
-    FROM refund_order r
-    JOIN pay_order p ON r.order_id = p.id
-    WHERE 1=1
-  `;
-  let countSql = `
-    SELECT COUNT(*) as total FROM refund_order r
-    JOIN pay_order p ON r.order_id = p.id
-    WHERE 1=1
-  `;
-  const paramsArr: unknown[] = [];
-
+  // 如果有 appId，先获取该商户的订单号列表
+  let orderNos: string[] = [];
   if (appId) {
-    sql += ' AND p.app_id = ?';
-    countSql += ' AND p.app_id = ?';
-    paramsArr.push(appId);
+    const { data: orders, error: orderError } = await client
+      .from('pay_order')
+      .select('order_no')
+      .eq('app_id', appId);
+    if (orderError) throw new Error(`查询订单失败: ${orderError.message}`);
+    orderNos = (orders || []).map(o => o.order_no);
   }
 
+  // 构建查询
+  let query = client
+    .from('refund_order')
+    .select('*', { count: 'exact', head: true });
+
+  if (orderNos.length > 0) {
+    query = query.in('order_no', orderNos);
+  }
   if (status) {
-    sql += ' AND r.status = ?';
-    countSql += ' AND r.status = ?';
-    paramsArr.push(status);
+    query = query.eq('status', status);
   }
 
-  // Count
-  const countParams = appId || status ? paramsArr : [];
-  const countResult = await db.query<{ total: number }>(countSql, countParams);
-  const total = countResult[0]?.total || 0;
+  const { count, error } = await query;
+  if (error) throw new Error(`查询退款总数失败: ${error.message}`);
+  const total = count || 0;
 
-  // List
-  sql += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
-  const listParams = [...paramsArr, pageSize, (page - 1) * pageSize];
-  const list = await db.query<RefundRow & { merchant_order_no: string }>(sql, listParams);
+  const { data, error: listError } = await client
+    .from('refund_order')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+  if (listError) throw new Error(`查询退款列表失败: ${listError.message}`);
+
+  // 过滤出属于该商户的退款
+  let filteredData = data || [];
+  if (appId && orderNos.length > 0) {
+    filteredData = filteredData.filter(r => orderNos.includes(r.order_no));
+  }
 
   return {
-    list: list.map((item) => ({
-      refund_no: item.refund_no,
-      order_no: item.order_no,
-      merchant_order_no: item.merchant_order_no,
-      channel: item.channel,
-      total_amount: item.total_amount,
-      refund_amount: item.refund_amount,
-      status: item.status,
-      reason: item.reason || undefined,
-      created_at: formatDateField(item.created_at),
-      refund_time: item.refund_time ? formatDateField(item.refund_time) : undefined,
-    })),
+    list: filteredData.map((item: Record<string, unknown>) => {
+      const formatDate = (date: unknown): string => {
+        if (!date) return '';
+        if (typeof date === 'string') return date.split('T')[0];
+        return String(date);
+      };
+
+      return {
+        refund_no: item.refund_no as string,
+        order_no: item.order_no as string,
+        merchant_refund_no: item.merchant_refund_no as string,
+        channel: item.channel as string,
+        total_amount: item.total_amount as number,
+        refund_amount: item.refund_amount as number,
+        refunded_amount: (item.refunded_amount as number) || 0,
+        reason: item.reason as string | undefined,
+        status: item.status as string,
+        fail_reason: item.fail_reason as string | undefined,
+        refund_time: formatDate(item.refund_time),
+        created_at: formatDate(item.created_at),
+      };
+    }),
     total,
   };
 }
 
-export async function queryRefund(appId: string, outRefundNo: string) {
+export async function queryRefund(
+  appId: string,
+  outRefundNo: string
+): Promise<UnifiedRefundResponse | null> {
   return RefundService.query(appId, outRefundNo);
 }
 

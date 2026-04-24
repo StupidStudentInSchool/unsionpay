@@ -1,17 +1,10 @@
 // =====================================================
-// 统一支付系统 - 支付服务
+// 统一支付系统 - 支付服务 (Supabase)
 // =====================================================
 
-// 将 Date 转换为 SQLite 可识别的日期格式
-function toSqliteDate(date: Date): string {
-  return date.toISOString().replace('T', ' ').substring(0, 19);
-}
-
-import db from '../../db';
-import { OrderRow } from '../../db';
+import { getSupabaseClient } from '@/storage/database/supabase-client';
 import { PayOrder, UnifiedPayRequest, UnifiedPayResponse, PayQueryResponse, OrderStatus, RefundStatus } from '../../types';
 import { MerchantService } from '../merchant';
-import { SignService } from '../sign';
 import { AlipayAdapter } from '../../adapters/alipay';
 import { WechatAdapter } from '../../adapters/wechat';
 import { PayAdapter, PayParams } from '../../types';
@@ -23,6 +16,10 @@ import config from '../../config';
  * 支付服务
  */
 export class PayService {
+  private static getClient() {
+    return getSupabaseClient();
+  }
+
   /**
    * 统一支付下单
    */
@@ -117,7 +114,7 @@ export class PayService {
         app_params: payParams.app_params,
         h5_params: payParams.h5_params,
       }),
-      expire_time: expireTime ? toSqliteDate(new Date(expireTime)) : null,
+      expire_time: expireTime ? new Date(expireTime) : null,
       status: 'pending',
       attach,
       client_ip,
@@ -132,7 +129,7 @@ export class PayService {
       pay_url: payParams.url,
       qr_code: payParams.qr_code,
       jsapi_params: payParams.jsapi_params,
-      expire_time: toSqliteDate(expireTime),
+      expire_time: expireTime ? new Date(expireTime).toISOString() : undefined,
     };
   }
 
@@ -226,104 +223,139 @@ export class PayService {
    * 创建订单
    */
   private static async createOrder(data: Partial<PayOrder>): Promise<number> {
-    const fields = [
-      'order_no', 'merchant_order_no', 'app_id', 'channel', 'channel_order_no',
-      'trade_type', 'total_amount', 'actual_amount', 'currency', 'subject', 'body',
-      'pay_url', 'qr_code', 'pay_params', 'expire_time', 'status', 'attach',
-      'client_ip', 'extra'
-    ];
+    const client = this.getClient();
+    
+    const insertData: Record<string, unknown> = {
+      order_no: data.order_no,
+      merchant_order_no: data.merchant_order_no,
+      app_id: data.app_id,
+      channel: data.channel,
+      trade_type: data.trade_type,
+      total_amount: data.total_amount,
+      actual_amount: data.actual_amount,
+      currency: data.currency || 'CNY',
+      subject: data.subject,
+      body: data.body,
+      pay_url: data.pay_url,
+      qr_code: data.qr_code,
+      pay_params: data.pay_params,
+      expire_time: data.expire_time,
+      status: data.status || 'pending',
+      attach: data.attach,
+      client_ip: data.client_ip,
+      extra: data.extra ? JSON.stringify(data.extra) : null,
+    };
 
-    const values = fields.map(field => {
-      const value = data[field as keyof PayOrder];
-      if (field === 'extra') {
-        return value ? JSON.stringify(value) : null;
-      }
-      // SQLite 不支持 undefined，需要转换为 null
-      if (value === undefined) {
-        return null;
-      }
-      return value;
-    });
-
-    const placeholders = fields.map(() => '?').join(', ');
-    const sql = `INSERT INTO pay_order (${fields.join(', ')}) VALUES (${placeholders})`;
-    const result = await db.execute(sql, values);
-    return result.lastInsertRowid;
+    const { data: result, error } = await client
+      .from('pay_order')
+      .insert(insertData)
+      .select('id')
+      .single();
+    if (error) throw new Error(`创建订单失败: ${error.message}`);
+    return result.id;
   }
 
   /**
    * 根据订单号查询
    */
   static async getByOrderNo(orderNo: string): Promise<PayOrder | null> {
-    const sql = 'SELECT * FROM pay_order WHERE order_no = ?';
-    const rows = await db.query<OrderRow>(sql, [orderNo]);
-    return (rows[0] as unknown as PayOrder) || null;
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('pay_order')
+      .select('*')
+      .eq('order_no', orderNo)
+      .maybeSingle();
+    if (error) throw new Error(`查询订单失败: ${error.message}`);
+    return data as PayOrder | null;
   }
 
   /**
    * 根据商户订单号查询
    */
   static async getByMerchantOrderNo(appId: string, merchantOrderNo: string): Promise<PayOrder | null> {
-    const sql = 'SELECT * FROM pay_order WHERE app_id = ? AND merchant_order_no = ?';
-    const rows = await db.query<OrderRow>(sql, [appId, merchantOrderNo]);
-    return (rows[0] as unknown as PayOrder) || null;
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('pay_order')
+      .select('*')
+      .eq('app_id', appId)
+      .eq('merchant_order_no', merchantOrderNo)
+      .maybeSingle();
+    if (error) throw new Error(`查询订单失败: ${error.message}`);
+    return data as PayOrder | null;
   }
 
   /**
    * 根据渠道订单号查询
    */
   static async getByChannelOrderNo(channel: string, channelOrderNo: string): Promise<PayOrder | null> {
-    const sql = 'SELECT * FROM pay_order WHERE channel = ? AND channel_order_no = ?';
-    const rows = await db.query<OrderRow>(sql, [channel, channelOrderNo]);
-    return (rows[0] as unknown as PayOrder) || null;
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('pay_order')
+      .select('*')
+      .eq('channel', channel)
+      .eq('channel_order_no', channelOrderNo)
+      .maybeSingle();
+    if (error) throw new Error(`查询订单失败: ${error.message}`);
+    return data as PayOrder | null;
   }
 
   /**
    * 更新订单状态
    */
   static async updateOrderStatus(orderNo: string, status: OrderStatus): Promise<boolean> {
-    const sql = 'UPDATE pay_order SET status = ?, updated_at = NOW() WHERE order_no = ?';
-    const result = await db.execute(sql, [status, orderNo]);
-    return result.changes > 0;
+    const client = this.getClient();
+    const { error } = await client
+      .from('pay_order')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('order_no', orderNo);
+    if (error) throw new Error(`更新订单状态失败: ${error.message}`);
+    return true;
   }
 
   /**
    * 更新渠道订单号
    */
   static async updateChannelOrderNo(orderNo: string, channelOrderNo: string): Promise<boolean> {
-    const sql = 'UPDATE pay_order SET channel_order_no = ?, updated_at = NOW() WHERE order_no = ?';
-    const result = await db.execute(sql, [channelOrderNo, orderNo]);
-    return result.changes > 0;
+    const client = this.getClient();
+    const { error } = await client
+      .from('pay_order')
+      .update({ channel_order_no: channelOrderNo, updated_at: new Date().toISOString() })
+      .eq('order_no', orderNo);
+    if (error) throw new Error(`更新渠道订单号失败: ${error.message}`);
+    return true;
   }
 
   /**
    * 标记订单已支付
    */
   static async markPaid(orderNo: string, channelOrderNo: string, paidTime?: Date): Promise<boolean> {
-    const sql = `
-      UPDATE pay_order 
-      SET status = 'paid', 
-          channel_order_no = ?,
-          paid_time = COALESCE(?, NOW()),
-          updated_at = NOW()
-      WHERE order_no = ?
-    `;
-    const result = await db.execute(sql, [channelOrderNo, paidTime, orderNo]);
-    return result.changes > 0;
+    const client = this.getClient();
+    const { error } = await client
+      .from('pay_order')
+      .update({ 
+        status: 'paid', 
+        channel_order_no: channelOrderNo,
+        paid_time: paidTime ? paidTime.toISOString() : new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('order_no', orderNo);
+    if (error) throw new Error(`标记订单已支付失败: ${error.message}`);
+    return true;
   }
 
   /**
    * 获取退款信息
    */
   static async getRefundInfo(orderId: number): Promise<{ status: string; refund_amount: number } | null> {
-    const sql = `
-      SELECT status, SUM(refund_amount) as refund_amount 
-      FROM refund_order 
-      WHERE order_id = ? AND status = 'success'
-      GROUP BY status
-    `;
-    const rows = await db.query<{ status: string; refund_amount: number }>(sql, [orderId]);
-    return (rows[0] as { status: string; refund_amount: number }) || null;
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('refund_order')
+      .select('status, refund_amount')
+      .eq('order_id', orderId)
+      .eq('status', 'success')
+      .maybeSingle();
+    if (error && error.code !== 'PGRST116') throw new Error(`查询退款信息失败: ${error.message}`);
+    return data ? { status: data.status, refund_amount: data.refund_amount } : null;
   }
 
   /**
@@ -335,34 +367,32 @@ export class PayService {
     page: number = 1,
     pageSize: number = 20
   ): Promise<{ list: PayOrder[]; total: number }> {
-    let sql = 'SELECT * FROM pay_order WHERE 1=1';
-    let countSql = 'SELECT COUNT(*) as total FROM pay_order WHERE 1=1';
-    const params: unknown[] = [];
+    const client = this.getClient();
+    
+    let query = client
+      .from('pay_order')
+      .select('*', { count: 'exact', head: true });
 
     if (appId) {
-      sql += ' AND app_id = ?';
-      countSql += ' AND app_id = ?';
-      params.push(appId);
+      query = query.eq('app_id', appId);
     }
-
     if (status) {
-      sql += ' AND status = ?';
-      countSql += ' AND status = ?';
-      params.push(status);
+      query = query.eq('status', status);
     }
 
-    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    const offset = (page - 1) * pageSize;
-    params.push(pageSize, offset);
+    const { count, error } = await query;
+    if (error) throw new Error(`查询订单总数失败: ${error.message}`);
 
-    const [list, countResult] = await Promise.all([
-      db.query<OrderRow>(sql, params),
-      db.query<OrderRow>(countSql, appId || status ? params.slice(0, -2) : [])
-    ]);
+    const { data, error: listError } = await client
+      .from('pay_order')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1);
+    if (listError) throw new Error(`查询订单列表失败: ${listError.message}`);
 
     return {
-      list: list as unknown as PayOrder[],
-      total: (countResult[0] as unknown as { total: number }).total || 0
+      list: (data || []) as PayOrder[],
+      total: count || 0
     };
   }
 }
@@ -406,59 +436,49 @@ export interface OrderSummaryResult {
 
 export async function getOrderList(params: OrderListParams): Promise<OrderListResult> {
   const { page, pageSize, status, channel, appId } = params;
+  const client = getSupabaseClient();
 
-  let sql = 'SELECT * FROM pay_order WHERE 1=1';
-  let countSql = 'SELECT COUNT(*) as total FROM pay_order WHERE 1=1';
-  const paramsArr: unknown[] = [];
+  let query = client
+    .from('pay_order')
+    .select('*', { count: 'exact', head: true });
 
   if (appId) {
-    sql += ' AND app_id = ?';
-    countSql += ' AND app_id = ?';
-    paramsArr.push(appId);
+    query = query.eq('app_id', appId);
   }
-
   if (status) {
-    sql += ' AND status = ?';
-    countSql += ' AND status = ?';
-    paramsArr.push(status);
+    query = query.eq('status', status);
   }
-
   if (channel) {
-    sql += ' AND channel = ?';
-    countSql += ' AND channel = ?';
-    paramsArr.push(channel);
+    query = query.eq('channel', channel);
   }
 
-  // Count
-  const countParams = appId || status || channel ? paramsArr : [];
-  const countResult = await db.query<{ total: number }>(countSql, countParams);
-  const total = countResult[0]?.total || 0;
+  const { count, error } = await query;
+  if (error) throw new Error(`查询订单总数失败: ${error.message}`);
+  const total = count || 0;
 
-  // List
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  const listParams = [...paramsArr, pageSize, (page - 1) * pageSize];
-  const list = await db.query<OrderRow>(sql, listParams);
+  const { data, error: listError } = await client
+    .from('pay_order')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range((page - 1) * pageSize, page * pageSize - 1);
+  if (listError) throw new Error(`查询订单列表失败: ${listError.message}`);
 
   return {
-    list: list.map((item) => {
-      // SQLite 返回的日期可能是字符串或 Date 对象
+    list: (data || []).map((item: Record<string, unknown>) => {
       const formatDate = (date: unknown): string => {
         if (!date) return '';
         if (typeof date === 'string') return date.split('T')[0];
-        if (typeof date === 'object' && 'toISOString' in date) {
-          return (date as Date).toISOString().split('T')[0];
-        }
         return String(date);
       };
 
       return {
-        order_no: item.order_no,
-        merchant_order_no: item.merchant_order_no,
-        app_id: item.app_id,
-        channel: item.channel,
-        trade_type: item.trade_type,
-        total_amount: item.total_amount,
-        status: item.status,
+        order_no: item.order_no as string,
+        merchant_order_no: item.merchant_order_no as string,
+        app_id: item.app_id as string,
+        channel: item.channel as string,
+        trade_type: item.trade_type as string,
+        total_amount: item.total_amount as number,
+        status: item.status as string,
         paid_time: formatDate(item.paid_time),
         created_at: formatDate(item.created_at),
       };
@@ -468,31 +488,35 @@ export async function getOrderList(params: OrderListParams): Promise<OrderListRe
 }
 
 export async function getOrderSummary(): Promise<OrderSummaryResult> {
+  const client = getSupabaseClient();
+
   // 获取订单统计
-  const orderSql = `
-    SELECT 
-      COUNT(*) as totalOrders,
-      SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paidOrders,
-      SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END) as totalAmount
-    FROM pay_order
-  `;
-  const orderResult = await db.query<{ totalOrders: number; paidOrders: number; totalAmount: number }>(orderSql);
-  const orderStats = orderResult[0] || { totalOrders: 0, paidOrders: 0, totalAmount: 0 };
+  const { data: orderData, error: orderError } = await client
+    .from('pay_order')
+    .select('status, total_amount');
+  if (orderError) throw new Error(`查询订单统计失败: ${orderError.message}`);
+
+  const orderList = orderData || [];
+  const totalOrders = orderList.length;
+  const paidOrders = orderList.filter(o => o.status === 'paid').length;
+  const totalAmount = orderList
+    .filter(o => o.status === 'paid')
+    .reduce((sum, o) => sum + (o.total_amount || 0), 0);
 
   // 获取退款统计
-  const refundSql = `
-    SELECT COALESCE(SUM(refund_amount), 0) as refundAmount
-    FROM refund_order
-    WHERE status = 'success'
-  `;
-  const refundResult = await db.query<{ refundAmount: number }>(refundSql);
-  const refundAmount = refundResult[0]?.refundAmount || 0;
+  const { data: refundData, error: refundError } = await client
+    .from('refund_order')
+    .select('refund_amount')
+    .eq('status', 'success');
+  if (refundError) throw new Error(`查询退款统计失败: ${refundError.message}`);
+
+  const refundAmount = (refundData || []).reduce((sum, r) => sum + (r.refund_amount || 0), 0);
 
   return {
-    totalOrders: orderStats.totalOrders || 0,
-    paidOrders: orderStats.paidOrders || 0,
-    totalAmount: orderStats.totalAmount || 0,
-    refundAmount: refundAmount || 0,
+    totalOrders,
+    paidOrders,
+    totalAmount,
+    refundAmount,
   };
 }
 

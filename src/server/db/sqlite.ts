@@ -7,11 +7,11 @@ import path from 'path';
 import fs from 'fs';
 
 // 根据环境判断数据库路径
-// 正式环境：使用 /tmp 目录（唯一可写目录）
+// 正式环境：使用持久化目录 /app/work/data
 // 开发环境：使用项目目录
 const isProd = process.env.COZE_PROJECT_ENV === 'PROD';
 const defaultDbPath = isProd 
-  ? '/tmp/unified_pay.db' 
+  ? '/app/work/data/unified_pay.db'   // 持久化目录
   : path.join(process.cwd(), 'data', 'unified_pay.db');
 
 const DB_PATH = process.env.SQLITE_DB_PATH || defaultDbPath;
