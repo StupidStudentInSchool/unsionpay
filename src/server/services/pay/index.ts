@@ -2,6 +2,11 @@
 // 统一支付系统 - 支付服务
 // =====================================================
 
+// 将 Date 转换为 SQLite 可识别的日期格式
+function toSqliteDate(date: Date): string {
+  return date.toISOString().replace('T', ' ').substring(0, 19);
+}
+
 import db from '../../db';
 import { OrderRow } from '../../db';
 import { PayOrder, UnifiedPayRequest, UnifiedPayResponse, PayQueryResponse, OrderStatus, RefundStatus } from '../../types';
@@ -112,7 +117,7 @@ export class PayService {
         app_params: payParams.app_params,
         h5_params: payParams.h5_params,
       }),
-      expire_time: expireTime instanceof Date ? expireTime : (expireTime ? new Date(expireTime) : undefined),
+      expire_time: expireTime ? toSqliteDate(new Date(expireTime)) : null,
       status: 'pending',
       attach,
       client_ip,
@@ -127,7 +132,7 @@ export class PayService {
       pay_url: payParams.url,
       qr_code: payParams.qr_code,
       jsapi_params: payParams.jsapi_params,
-      expire_time: expireTime.toISOString(),
+      expire_time: toSqliteDate(expireTime),
     };
   }
 
