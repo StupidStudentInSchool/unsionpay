@@ -31,8 +31,12 @@ export default function KeyGeneratorPage() {
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
       
       // PKCS#8 格式私钥（支付宝要求）
-      const privateKey = forge.pki.privateKeyToPkcs8Pem(keypair.privateKey);
-      // PKCS#8 格式公钥
+      const privateKeyPkcs8 = forge.asn1.toDer(forge.pki.privateKeyToAsn1(keypair.privateKey)).getBytes();
+      const privateKey = '-----BEGIN PRIVATE KEY-----\n' + 
+        forge.util.encode64(privateKeyPkcs8) + 
+        '\n-----END PRIVATE KEY-----';
+      
+      // PKCS#8 公钥
       const publicKey = forge.pki.publicKeyToPem(keypair.publicKey);
       
       setAlipayKeys({ privateKey, publicKey });
@@ -61,8 +65,12 @@ export default function KeyGeneratorPage() {
       const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048, workers: -1 });
       
       // PKCS#8 格式私钥（微信支付 APIv3 要求）
-      const privateKey = forge.pki.privateKeyToPkcs8Pem(keypair.privateKey);
-      // PKCS#8 格式公钥
+      const privateKeyPkcs8 = forge.asn1.toDer(forge.pki.privateKeyToAsn1(keypair.privateKey)).getBytes();
+      const privateKey = '-----BEGIN PRIVATE KEY-----\n' + 
+        forge.util.encode64(privateKeyPkcs8) + 
+        '\n-----END PRIVATE KEY-----';
+      
+      // PKCS#8 公钥
       const publicKey = forge.pki.publicKeyToPem(keypair.publicKey);
       
       setWechatRsaKeys({ privateKey, publicKey });
