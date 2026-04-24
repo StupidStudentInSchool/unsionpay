@@ -70,8 +70,11 @@ export const AlipayAdapter = {
     let tradeNo: string | undefined;
     let qrCode: string | undefined;
 
-    // 判断是否使用沙箱模式
-    const useSandbox = !config.alipay_private_key || !config.alipay_app_id;
+    // 判断是否使用沙箱模式：
+    // 1. 未配置 alipay_private_key 或 alipay_app_id
+    // 2. 或者配置的 app_id 是沙箱专用 ID (2021001234567890)
+    const isSandboxAppId = config.alipay_app_id === '2021001234567890';
+    const useSandbox = !config.alipay_private_key || !config.alipay_app_id || isSandboxAppId;
 
     // 沙箱模式使用固定的沙箱 app_id
     if (useSandbox) {
