@@ -140,6 +140,7 @@ POST /api/notify/wechat  # 微信支付回调
   - 商户管理: `/dashboard/merchant` - 商户CRUD
   - 订单管理: `/dashboard/order` - 订单查询
   - 退款管理: `/dashboard/refund` - 退款处理
+  - 密钥工具: `/dashboard/tools/key-generator` - 密钥生成
 
 ## 注意事项
 

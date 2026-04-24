@@ -9,6 +9,7 @@ import {
   CreditCard,
   RefreshCw,
   Settings,
+  Key,
   ChevronLeft,
   ChevronRight,
   Menu,
@@ -20,6 +21,7 @@ const navigation = [
   { name: '商户管理', href: '/dashboard/merchant', icon: Users },
   { name: '支付订单', href: '/dashboard/order', icon: CreditCard },
   { name: '退款管理', href: '/dashboard/refund', icon: RefreshCw },
+  { name: '密钥工具', href: '/dashboard/tools/key-generator', icon: Key },
 ];
 
 export default function DashboardLayout({
