@@ -26,10 +26,10 @@ export default function KeyGeneratorPage() {
   // 复制状态
   const [copied, setCopied] = useState<string | null>(null);
 
-  // 生成 PKCS#1 格式公钥（支付宝要求）
+  // 生成 PKCS#1 格式公钥的纯 Base64 字符串（支付宝要求）
   // PKCS#1 格式 = RSAPublicKey = { modulus (n), publicExponent (e) }
-  // PKCS#8 格式 = SubjectPublicKeyInfo = { algorithm, subjectPublicKey }
-  const publicKeyToPkcs1 = (forge: typeof import('node-forge'), publicKey: any): string => {
+  // 支付宝需要纯 Base64 字符串，不带 PEM 头部
+  const publicKeyToPkcs1Base64 = (forge: typeof import('node-forge'), publicKey: any): string => {
     // 从公钥对象提取 n 和 e
     const publicKeyHex = publicKey.n.toString(16); // modulus
     const exponent = publicKey.e; // public exponent (通常是 65537)
@@ -51,9 +51,8 @@ export default function KeyGeneratorPage() {
     );
     
     const der = forge.asn1.toDer(asn1Sequence).getBytes();
-    return '-----BEGIN RSA PUBLIC KEY-----\n' + 
-      forge.util.encode64(der) + 
-      '\n-----END RSA PUBLIC KEY-----';
+    // 返回纯 Base64 字符串（支付宝要求）
+    return forge.util.encode64(der);
   };
 
   // 将十六进制字符串转换为字节数组
@@ -99,10 +98,10 @@ export default function KeyGeneratorPage() {
       // PKCS#8 格式公钥（通用格式）
       const publicKeyPkcs8 = forge.pki.publicKeyToPem(keypair.publicKey);
       
-      // PKCS#1 格式公钥（支付宝要求）
-      const publicKeyPkcs1 = publicKeyToPkcs1(forge, keypair.publicKey);
+      // PKCS#1 格式公钥（支付宝要求：纯 Base64 字符串）
+      const publicKeyPkcs1 = publicKeyToPkcs1Base64(forge, keypair.publicKey);
       
-      setAlipayKeys({ privateKey, publicKeyPkcs8, publicKeyPkcs1 });
+      setAlipayKeys({ privateKey, publicKeyPkcs8, publicKeyPkcs1: publicKeyPkcs1 });
     } catch (error) {
       console.error('Failed to generate Alipay keys:', error);
       alert('生成失败，请重试');
@@ -259,12 +258,12 @@ export default function KeyGeneratorPage() {
                     <p className="text-xs text-slate-500">用于：配置到商户设置中，服务端调用支付宝 API 时签名使用</p>
                   </div>
 
-                  {/* 应用公钥 - 支付宝要求的格式 */}
+                  {/* 应用公钥 - 支付宝要求的纯 Base64 字符串 */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Label>应用公钥 (上传到支付宝后台)</Label>
-                        <Badge className="bg-green-100 text-green-700 border-green-300">PKCS#1 格式</Badge>
+                        <Badge className="bg-green-100 text-green-700 border-green-300">纯 Base64</Badge>
                       </div>
                       <div className="flex gap-2">
                         <Button 
@@ -276,14 +275,6 @@ export default function KeyGeneratorPage() {
                           <Copy className="w-4 h-4 mr-1" />
                           {copied === 'alipay-public' ? '已复制' : '复制'}
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => downloadFile(alipayKeys.publicKeyPkcs1, 'alipay_public_key.pem', 'application/x-pem-file')}
-                        >
-                          <Download className="w-4 h-4 mr-1" />
-                          下载
-                        </Button>
                       </div>
                     </div>
                     <div className="p-4 bg-slate-900 rounded-lg">
@@ -291,7 +282,7 @@ export default function KeyGeneratorPage() {
                         {alipayKeys.publicKeyPkcs1}
                       </pre>
                     </div>
-                    <p className="text-xs text-slate-500">用于：复制此内容到支付宝开放平台 → 应用信息 → 密钥设置</p>
+                    <p className="text-xs text-slate-500">用于：复制此纯字符串（不含 -----BEGIN 行）到支付宝开放平台</p>
                   </div>
 
                   {/* PKCS#8 格式公钥 - 仅供调试 */}
@@ -326,14 +317,14 @@ export default function KeyGeneratorPage() {
                       <p className="font-medium text-green-800">配置步骤</p>
                       <ol className="text-sm text-green-700 space-y-1 list-decimal list-inside">
                         <li>点击「生成密钥对」获取新的密钥</li>
-                        <li>复制「应用公钥 (上传到支付宝后台)」的内容</li>
+                        <li>复制上面的「应用公钥」纯字符串（蓝色高亮区域）</li>
                         <li>登录支付宝开放平台 → 我的应用 → 密钥设置</li>
                         <li>选择「RSA2(SHA256)」签名方式，粘贴公钥内容</li>
                         <li>支付宝会返回「支付宝公钥」，需配置到商户设置中</li>
                         <li>将「应用私钥」配置到本系统的商户设置中</li>
                       </ol>
                       <p className="text-xs text-green-600 mt-2">
-                        注意：复制时请确保包含完整的 <code className="bg-green-100 px-1 rounded">-----BEGIN RSA PUBLIC KEY-----</code> 和 <code className="bg-green-100 px-1 rounded">-----END RSA PUBLIC KEY-----</code> 标签
+                        注意：只需复制公钥的 Base64 字符串，不要复制 -----BEGIN----- 行
                       </p>
                     </CardContent>
                   </Card>
