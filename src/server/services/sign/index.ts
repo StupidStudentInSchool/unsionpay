@@ -87,6 +87,19 @@ export class SignService {
   }
 
   /**
+   * 支付宝验签 - 直接使用验签字符串
+   * 用于处理 URL 编码的回调参数
+   */
+  static alipayVerifyRaw(
+    signString: string,
+    sign: string,
+    publicKey: string,
+    signType: SignType = 'RSA2'
+  ): boolean {
+    return this.rsaVerify(signString, sign, publicKey, signType);
+  }
+
+  /**
    * 微信支付签名 (APIv2)
    */
   static wechatSignV2(

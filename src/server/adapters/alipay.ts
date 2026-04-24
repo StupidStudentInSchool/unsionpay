@@ -145,17 +145,52 @@ export const AlipayAdapter = {
   },
 
   /**
+   * 构建用于验签的参数字符串（支付宝要求不解码）
+   */
+  buildSignParams(body: string): { signString: string; sign: string } {
+    const pairs = body.split('&');
+    const filteredPairs: string[] = [];
+    let sign = '';
+    
+    for (const pair of pairs) {
+      if (pair.startsWith('sign=')) {
+        sign = decodeURIComponent(pair.substring(5));
+      } else if (!pair.startsWith('sign_type=')) {
+        filteredPairs.push(pair);
+      }
+    }
+    
+    // 按字典序排序
+    filteredPairs.sort((a, b) => {
+      const keyA = a.split('=')[0];
+      const keyB = b.split('=')[0];
+      return keyA.localeCompare(keyB);
+    });
+    
+    return {
+      signString: filteredPairs.join('&'),
+      sign,
+    };
+  },
+
+  /**
    * 解析回调通知
    */
   async parseNotify(request: Request, config: MerchantConfig): Promise<NotifyResult> {
     const body = await request.text();
-    const params = parseQueryString(body);
 
+    // 支付宝验签需要使用原始的 URL 编码字符串（不解码）
+    // 构建用于验签的参数字符串（排除 sign 和 sign_type）
+    const signParams = this.buildSignParams(body);
+    
     // 验证签名 - 使用支付宝公钥验签
-    const sign = params.sign as string;
-    if (!SignService.alipayVerify(params, sign, config.alipay_alipay_public_key!)) {
+    const sign = signParams.sign;
+    if (!signParams.signString || !SignService.alipayVerifyRaw(signParams.signString, sign, config.alipay_alipay_public_key!)) {
       throw new Error('签名验证失败');
     }
+
+    // 解析参数用于业务处理
+    const params = parseQueryString(body);
 
     // 解析通知类型
     const notifyType = params.notify_type || 'trade';
@@ -185,15 +220,15 @@ export const AlipayAdapter = {
    */
   async verifyNotifySign(request: Request, config: MerchantConfig): Promise<boolean> {
     const body = await request.text();
-    const params = parseQueryString(body);
-    const sign = params.sign as string;
-
-    // 使用支付宝公钥验签
+    
+    // 使用原始 URL 编码字符串验签
+    const { signString, sign } = this.buildSignParams(body);
+    
     if (!sign || !config.alipay_alipay_public_key) {
       return false;
     }
 
-    return SignService.alipayVerify(params, sign, config.alipay_alipay_public_key);
+    return SignService.alipayVerifyRaw(signString, sign, config.alipay_alipay_public_key);
   },
 
   /**
