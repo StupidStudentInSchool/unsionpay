@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
     // 处理回调
     const result = await NotifyService.handlePayNotify('alipay', request, {
       alipay_public_key: merchant.alipay_public_key,
+      alipay_alipay_public_key: merchant.alipay_alipay_public_key, // 支付宝公钥用于验签
     });
 
     console.log(`[${requestId}] Alipay notify processed:`, result);

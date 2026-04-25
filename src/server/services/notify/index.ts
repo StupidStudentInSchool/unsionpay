@@ -20,7 +20,11 @@ export const NotifyService = {
   async handlePayNotify(
     channel: PayChannel,
     request: Request,
-    signConfig: { alipay_public_key?: string; wechat_api_key?: string }
+    signConfig: { 
+      alipay_public_key?: string;  // 应用私钥
+      alipay_alipay_public_key?: string; // 支付宝公钥，用于验签
+      wechat_api_key?: string 
+    }
   ): Promise<{
     order_no: string;
     channel_order_no: string;
